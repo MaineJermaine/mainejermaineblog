@@ -66,3 +66,4 @@ zstandard==0.25.0
 
 gunicorn
 werkzeug
+psycopg2-binary
