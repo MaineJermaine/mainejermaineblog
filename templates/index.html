@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Edgy Blog</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation Bar -->
+        <nav class="navbar">
+            <div class="nav-logo">
+                <h1>✧ jermaine's blog ✧</h1>
+            </div>
+            <div class="nav-links">
+                <button id="login-btn" class="glitch-btn" onclick="toggleLogin()">[ Login ]</button>
+                <button id="logout-btn" class="glitch-btn hidden" onclick="logout()">[ Logout ]</button>
+            </div>
+        </nav>
+
+        <!-- Login Modal -->
+        <div id="login-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="toggleLogin()">&times;</span>
+                <h2>Owner Authentication</h2>
+                <input type="password" id="login-password" placeholder="Enter Secret Key..." autocomplete="off">
+                <button onclick="login()" class="submit-btn">Verify</button>
+                <p id="login-error" class="error-msg"></p>
+            </div>
+        </div>
+
+        <div class="layout-wrapper">
+            <!-- Left Sidebar -->
+            <aside class="profile-sidebar" id="profile-sidebar">
+                <div class="sidebar-content">
+                    <img id="side-profile-pic" src="/static/default_pic.jpg" alt="Profile" class="side-profile-pic">
+                    <h2 id="side-username">Owner</h2>
+                    <p id="side-bio">Loading bio...</p>
+                    <div id="side-links" class="profile-links"></div>
+                    <button id="edit-profile-btn" class="glitch-btn hidden" onclick="openEditProfileModal()">[ Edit Profile ]</button>
+                    <button id="follow-btn" class="glitch-btn" onclick="openFollowModal()" style="margin-top:10px;">[ Follow ]</button>
+                </div>
+            </aside>
+
+            <main class="feed-section">
+                <!-- Create Post Section (Only visible to owner) -->
+        <div id="create-post-section" class="hidden">
+            <div class="card create-card">
+                <h2>+++ CREATE NEW ENTRY +++</h2>
+                <input type="text" id="post-title" placeholder="Title (Optional)">
+                <textarea id="post-content" placeholder="What's on your mind?"></textarea>
+                
+                <div class="form-row">
+                    <select id="post-folder">
+                        <!-- Populated dynamically via JS from collections -->
+                        <option value="Main">Main</option>
+                    </select>
+                    <div style="position:relative; flex-grow:1; width:100%;">
+                        <input type="text" id="post-tags" placeholder="Tags (comma separated)" oninput="showTagSuggestions()" onfocus="showTagSuggestions()" style="margin-bottom:0;">
+                        <div id="tag-suggestions" class="hidden" style="position:absolute; width:100%; max-height:150px; overflow-y:auto; background:var(--card-bg); border:1px solid var(--border-color); border-radius:5px; z-index:15; box-shadow:0 5px 15px rgba(0,0,0,0.8);"></div>
+                    </div>
+                </div>
+
+                <div class="file-upload">
+                    <label for="post-media" class="upload-btn">Add Media (Img/Vid/Aud)</label>
+                    <input type="file" id="post-media" multiple accept="image/*,video/*,audio/*" class="hidden" onchange="handleMediaSelect(event)">
+                </div>
+                
+                <div id="post-links-container" style="margin-bottom: 10px;"></div>
+                <button type="button" class="glitch-btn" onclick="addPostLink()" style="margin-bottom:15px;">+ Add Post Link</button>
+                
+                <div id="media-preview-container" class="media-preview-grid hidden"></div>
+
+                <button onclick="submitPost()" class="submit-btn glitch-btn">>> B O A R D C A S T <<</button>
+            </div>
+        </div>
+
+        <!-- Filter / Folders -->
+        <div class="folder-filters" id="folder-filters">
+            <!-- Populated dynamically via JS -->
+            <button class="filter-btn active" onclick="loadPosts('')">All</button>
+        </div>
+
+        <!-- Feed (Chronological Scrolling Page) -->
+        <div id="feed" class="feed">
+            <!-- Posts will be injected here via JS -->
+        </div>
+            </main>
+
+            <!-- Right Sidebar -->
+            <aside class="right-sidebar" id="right-sidebar">
+                <div class="sidebar-buttons">
+                    <button class="add-btn glitch-btn hidden owner-only" onclick="openModal('add-obsession-modal')">+ Add Obsession</button>
+                    <button class="add-btn glitch-btn hidden owner-only" onclick="openModal('add-reading-modal')">+ Add Reading Log</button>
+                </div>
+                <div class="sidebar-scroller">
+                    <div class="sidebar-section">
+                        <h2>What I'm currently obsessed with:</h2>
+                        <div id="obsessions-list" class="sidebar-list"></div>
+                    </div>
+                    
+                    <div class="sidebar-section" style="margin-top:30px;">
+                        <h2>Reading List</h2>
+                        <div id="reading-list" class="sidebar-list"></div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+    
+    <!-- Modal / Toast Layer -->
+    <div id="toast-container" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:1000;"></div>
+
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="confirm-title" style="color:var(--accent-primary)">??? CONFIRM ???</h2>
+            <p id="confirm-msg" style="margin-bottom:20px;"></p>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button id="confirm-yes-btn" class="submit-btn" style="width:100px;">YES</button>
+                <button onclick="closeModal('confirm-modal')" class="owner-btn" style="width:100px; color:#ff4444;">NO</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Post Modal -->
+    <div id="edit-post-modal" class="modal hidden">
+        <div class="modal-content" style="max-height:90vh; overflow-y:auto;">
+            <span class="close" onclick="closeModal('edit-post-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">[+++ EDIT POST +++]</h2>
+            <input type="hidden" id="edit-post-id">
+            
+            <label class="modal-label">Title</label>
+            <input type="text" id="edit-post-title" placeholder="Title">
+            
+            <label class="modal-label">Content</label>
+            <textarea id="edit-post-content" placeholder="Content" style="min-height:150px;"></textarea>
+            
+            <div class="form-row">
+                <select id="edit-post-folder"></select>
+                <div style="position:relative; flex-grow:1;">
+                    <input type="text" id="edit-post-tags" placeholder="Tags" oninput="showTagSuggestions('edit-post-tags', 'edit-tag-suggestions')" onfocus="showTagSuggestions('edit-post-tags', 'edit-tag-suggestions')">
+                    <div id="edit-tag-suggestions" class="hidden" style="position:absolute; width:100%; max-height:100px; overflow-y:auto; background:var(--card-bg); border:1px solid var(--border-color); z-index:20;"></div>
+                </div>
+            </div>
+
+            <label class="modal-label">Upload New Media (Images/Videos/Audio/GIFs)</label>
+            <input type="file" id="edit-post-media" multiple accept="image/*,video/*,audio/*" class="file-input-clean" onchange="handleEditMediaSelect(event)">
+            <p id="edit-file-count" style="font-size:0.8rem; color:var(--text-dim); margin-top:5px;">0 files selected</p>
+            <div id="edit-media-preview-container" class="media-preview-grid hidden" style="margin-bottom:15px;"></div>
+
+            <label class="modal-label">Links</label>
+            <div id="edit-post-links-container" style="margin-bottom:10px;"></div>
+            <button type="button" class="glitch-btn" onclick="addEditPostLink()" style="margin-bottom:15px;">+ Add Link</button>
+
+            <button onclick="saveEditedPost()" class="submit-btn glitch-btn">>> UPDATE POST <<</button>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div id="edit-profile-modal" class="modal hidden">
+        <div class="modal-content" style="max-height:80vh; overflow-y:auto;">
+            <span class="close" onclick="closeEditProfileModal()">&times;</span>
+            <h2>Edit Profile</h2>
+            
+            <label class="modal-label">Profile Picture</label>
+            <input type="file" id="edit-profile-pic-input" accept="image/*" class="file-input-clean" onchange="previewEditPic(event)">
+            <img id="edit-pic-preview" class="side-profile-pic hidden" style="width:60px;height:60px;margin:5px 0;">
+            
+            <label class="modal-label">Username</label>
+            <input type="text" id="edit-profile-username" placeholder="Username">
+            
+            <label class="modal-label">Bio</label>
+            <textarea id="edit-profile-bio" placeholder="Bio" style="min-height:60px;"></textarea>
+            
+            <label class="modal-label">Collections (Comma separated)</label>
+            <input type="text" id="edit-profile-collections" placeholder="Main, Poetry, Art">
+            
+            <label class="modal-label">Background Style</label>
+            <select id="edit-profile-bg-type" onchange="updateBgMode()" style="margin-bottom:10px;">
+                <option value="preset">Preset Neon (Default)</option>
+                <option value="color">Solid / Hex Color</option>
+                <option value="media">Upload Image/Video</option>
+            </select>
+            <input type="text" id="edit-profile-bg-color" placeholder="#000000" class="hidden">
+            <input type="file" id="edit-profile-bg-media" class="hidden file-input-clean" accept="image/*,video/*" onchange="previewBgMedia(event)">
+            <div id="bg-media-preview" class="media-preview-grid hidden" style="margin-bottom:10px;"></div>
+
+            <label class="modal-label">Links</label>
+            <div id="edit-links-container" style="margin-bottom:10px;"></div>
+            <button type="button" class="glitch-btn" onclick="addEditLink()" style="margin-bottom:15px; display:block;">+ Add Link</button>
+            
+            <button onclick="saveProfile()" class="submit-btn">Save Profile</button>
+            <p id="profile-error" class="error-msg"></p>
+        </div>
+    </div>
+
+    <!-- Follow Modal -->
+    <div id="follow-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeFollowModal()">&times;</span>
+            <h2>Follow Jermaine</h2>
+            <p>Enter your email to get a notification when a new post is made!</p>
+            <input type="email" id="follow-email" placeholder="you@example.com" style="margin-top: 10px;">
+            <button onclick="submitFollow()" class="submit-btn" style="margin-top: 10px;">Subscribe</button>
+            <p id="follow-msg" class="error-msg"></p>
+        </div>
+    </div>
+
+    <!-- Viewer Name Modal -->
+    <div id="viewer-name-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeViewerNameModal()">&times;</span>
+            <h2>Identify Yourself</h2>
+            <p>Please enter a name before commenting.</p>
+            <input type="text" id="viewer-name-input" placeholder="Your Name">
+            <input type="hidden" id="pending-comment-post-id">
+            <button onclick="saveViewerNameAndComment()" class="submit-btn">Set Name & Comment</button>
+        </div>
+    </div>
+
+    <div id="add-obsession-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-obsession-modal')">&times;</span>
+            <h2>Add Obsession</h2>
+            <input type="text" id="obs-category" placeholder="Category (e.g. Games, Songs, Youtube Channels)">
+            <input type="text" id="obs-content" placeholder="Content (e.g. Elden Ring)">
+            <label class="modal-label">Add Img/GIF (Optional):</label>
+            <input type="file" id="obs-image" accept="image/*" class="file-input-clean">
+            <button onclick="submitObsession()" class="submit-btn">Save</button>
+        </div>
+    </div>
+
+    <!-- Edit Post Modal -->
+    <div id="edit-post-modal" class="modal hidden">
+        <div class="modal-content" style="max-height:90vh; overflow-y:auto;">
+            <span class="close" onclick="closeModal('edit-post-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">[+++ EDIT POST +++]</h2>
+            <input type="hidden" id="edit-post-id">
+
+            <label class="modal-label">Title</label>
+            <input type="text" id="edit-post-title" placeholder="Title">
+
+            <label class="modal-label">Content</label>
+            <textarea id="edit-post-content" placeholder="Content" style="min-height:150px;"></textarea>
+
+            <div class="form-row">
+                <select id="edit-post-folder"></select>
+                <div style="position:relative; flex-grow:1;">
+                    <input type="text" id="edit-post-tags" placeholder="Tags" oninput="showTagSuggestions('edit-post-tags', 'edit-tag-suggestions')" onfocus="showTagSuggestions('edit-post-tags', 'edit-tag-suggestions')">
+                    <div id="edit-tag-suggestions" class="hidden" style="position:absolute; width:100%; max-height:100px; overflow-y:auto; background:var(--card-bg); border:1px solid var(--border-color); z-index:20;"></div>
+                </div>
+            </div>
+
+            <label class="modal-label">Upload New Media (Images/Videos/Audio/GIFs)</label>
+            <input type="file" id="edit-post-media" multiple accept="image/*,video/*,audio/*" class="file-input-clean" onchange="handleEditMediaSelect(event)">
+            <p id="edit-file-count" style="font-size:0.8rem; color:var(--text-dim); margin-top:5px;">0 files selected</p>
+            <div id="edit-media-preview-container" class="media-preview-grid hidden" style="margin-bottom:15px;"></div>
+
+            <label class="modal-label">Links</label>
+            <div id="edit-post-links-container" style="margin-bottom:10px;"></div>
+            <button type="button" class="glitch-btn" onclick="addEditPostLink()" style="margin-bottom:15px;">+ Add Link</button>
+
+            <button onclick="saveEditedPost()" class="submit-btn glitch-btn">>> UPDATE POST <<</button>
+        </div>
+    </div>
+
+    <!-- Add Reading List Modal -->
+    <div id="add-reading-modal" class="modal hidden">
+        <div class="modal-content" style="max-height:80vh; overflow-y:auto;">
+            <span class="close" onclick="closeModal('add-reading-modal')">&times;</span>
+            <h2>Add Reading Item</h2>
+            <input type="text" id="read-title" placeholder="Manga / Manhwa Title">
+            <label class="modal-label">Cover Image:</label>
+            <input type="file" id="read-cover" accept="image/*" class="file-input-clean">
+            <textarea id="read-desc" placeholder="What is it about?"></textarea>
+            <input type="text" id="read-app" placeholder="Manga reader app or website (e.g. Tachiyomi)">
+            <input type="text" id="read-link" placeholder="Link (Optional)">
+            <button onclick="submitReading()" class="submit-btn">Save</button>
+        </div>
+    </div>
+
+    <!-- Edit Obsession Modal -->
+    <div id="edit-obsession-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('edit-obsession-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">Edit Obsession</h2>
+            <input type="hidden" id="edit-obs-id">
+            <input type="text" id="edit-obs-category" placeholder="Category (e.g. Games, Songs)">
+            <input type="text" id="edit-obs-content" placeholder="Content (e.g. Elden Ring)">
+            <label class="modal-label">Replace Image/GIF (Optional):</label>
+            <input type="file" id="edit-obs-image" accept="image/*" class="file-input-clean">
+            <button onclick="saveEditedObsession()" class="submit-btn glitch-btn">Save Changes</button>
+        </div>
+    </div>
+
+    <!-- Edit Reading Modal -->
+    <div id="edit-reading-modal" class="modal hidden">
+        <div class="modal-content" style="max-height:80vh; overflow-y:auto;">
+            <span class="close" onclick="closeModal('edit-reading-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">Edit Reading Item</h2>
+            <input type="hidden" id="edit-read-id">
+            <input type="text" id="edit-read-title" placeholder="Title">
+            <label class="modal-label">Replace Cover Image (Optional):</label>
+            <input type="file" id="edit-read-cover" accept="image/*" class="file-input-clean">
+            <textarea id="edit-read-desc" placeholder="Description"></textarea>
+            <input type="text" id="edit-read-app" placeholder="App / Website used">
+            <input type="text" id="edit-read-link" placeholder="Link (Optional)">
+            <button onclick="saveEditedReading()" class="submit-btn glitch-btn">Save Changes</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/script.js"></script>
+</body>
+</html>

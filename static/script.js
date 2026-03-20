@@ -1,0 +1,1276 @@
+let isOwner = false;
+let currentFolder = '';
+let currentPosts = [];
+let selectedMediaFiles = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+    checkStatus().then(() => {
+        // Load sidebars AFTER auth state is known so isOwner is correct
+        loadObsessions();
+        loadReadingList();
+    });
+    loadPosts('');
+    
+    // Auto-resize textareas so you can view long text in its entirety
+    document.body.addEventListener('input', function(e) {
+        if (e.target.tagName.toLowerCase() === 'textarea') {
+            e.target.style.height = 'auto'; // Reset first
+            e.target.style.height = (e.target.scrollHeight) + 'px'; // Expand to scroll max
+        }
+    });
+});
+
+function handleMediaSelect(e) {
+    for (let i = 0; i < e.target.files.length; i++) {
+        selectedMediaFiles.push(e.target.files[i]);
+    }
+    e.target.value = '';
+    renderMediaPreview();
+}
+
+function removeMedia(index) {
+    selectedMediaFiles.splice(index, 1);
+    renderMediaPreview();
+}
+
+function renderMediaPreview() {
+    const previewContainer = document.getElementById('media-preview-container');
+    previewContainer.innerHTML = '';
+    
+    if (selectedMediaFiles.length > 0) {
+        previewContainer.classList.remove('hidden');
+        selectedMediaFiles.forEach((file, index) => {
+            const url = URL.createObjectURL(file);
+            let mediaEl = '';
+            if (file.type.startsWith('image/')) {
+                mediaEl = `<img src="${url}" class="media-preview-item">`;
+            } else if (file.type.startsWith('video/')) {
+                mediaEl = `<video src="${url}" class="media-preview-item" controls></video>`;
+            } else if (file.type.startsWith('audio/')) {
+                mediaEl = `<audio src="${url}" controls style="width:100%"></audio>`;
+            }
+            previewContainer.innerHTML += `
+                <div style="position:relative">
+                    ${mediaEl}
+                    <button type="button" onclick="removeMedia(${index})" style="position:absolute;top:5px;right:5px;background:#ff4444;color:white;border:none;border-radius:50%;width:25px;height:25px;cursor:pointer;font-weight:bold;z-index:10;">X</button>
+                </div>
+            `;
+        });
+    } else {
+        previewContainer.classList.add('hidden');
+    }
+}
+
+// Auth Status
+async function checkStatus() {
+    try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        isOwner = data.is_owner;
+        
+        // Update Sidebar
+        document.getElementById('side-username').innerText = data.username;
+        document.getElementById('side-profile-pic').src = data.profile_pic;
+        document.getElementById('side-bio').innerText = data.bio || '';
+        
+        const linksContainer = document.getElementById('side-links');
+        linksContainer.innerHTML = '';
+        if (data.links && Array.isArray(data.links)) {
+            data.links.forEach(link => {
+                const a = document.createElement('a');
+                a.href = link.url;
+                a.innerText = link.platform;
+                a.target = '_blank';
+                linksContainer.appendChild(a);
+            });
+        }
+        
+        // Pre-fill edit inputs
+        document.getElementById('edit-profile-username').value = data.username;
+        document.getElementById('edit-profile-bio').value = data.bio || '';
+        document.getElementById('edit-profile-collections').value = (data.collections || []).join(', ');
+        
+        let bgType = data.bg_type || 'preset';
+        document.getElementById('edit-profile-bg-type').value = bgType;
+        if (bgType === 'color') document.getElementById('edit-profile-bg-color').value = data.bg_val;
+        updateBgMode();
+        
+        applyBg(data.bg_type, data.bg_val);
+        updateCollectionsUI(data.collections || []);
+        renderEditLinks(data.links || []);
+        
+        updateUI();
+        // Reload sidebars now that isOwner is known
+        loadObsessions();
+        loadReadingList();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function updateUI() {
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const createSection = document.getElementById('create-post-section');
+    const editProfileBtn = document.getElementById('edit-profile-btn');
+    const followBtn = document.getElementById('follow-btn');
+    
+    if (isOwner) {
+        loginBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        createSection.classList.remove('hidden');
+        if(editProfileBtn) editProfileBtn.classList.remove('hidden');
+        if(followBtn) followBtn.classList.add('hidden');
+        document.querySelectorAll('.owner-only').forEach(el => el.classList.remove('hidden'));
+    } else {
+        loginBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        createSection.classList.add('hidden');
+        if(editProfileBtn) editProfileBtn.classList.add('hidden');
+        if(followBtn) followBtn.classList.remove('hidden');
+        document.querySelectorAll('.owner-only').forEach(el => el.classList.add('hidden'));
+    }
+    
+    // Re-render feed to show/hide edit/delete buttons
+    renderFeed();
+}
+
+// Login/Logout functionality
+function toggleLogin() {
+    const modal = document.getElementById('login-modal');
+    if (modal.classList.contains('hidden')) {
+        modal.classList.remove('hidden');
+        document.getElementById('login-password').focus();
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+async function login() {
+    const pwdInput = document.getElementById('login-password').value;
+    const errorMsg = document.getElementById('login-error');
+    
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: pwdInput})
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            isOwner = true;
+            toggleLogin();
+            updateUI();
+            document.getElementById('login-password').value = '';
+            errorMsg.innerText = '';
+        } else {
+            errorMsg.innerText = 'ACCESS DENIED';
+        }
+    } catch (e) {
+        errorMsg.innerText = 'Network Error';
+    }
+}
+
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    isOwner = false;
+    updateUI();
+}
+
+// Follow Functions
+function openFollowModal() {
+    document.getElementById('follow-modal').classList.remove('hidden');
+    document.getElementById('follow-msg').innerText = '';
+    document.getElementById('follow-email').value = '';
+}
+
+function closeFollowModal() {
+    document.getElementById('follow-modal').classList.add('hidden');
+}
+
+async function submitFollow() {
+    const email = document.getElementById('follow-email').value;
+    const msgEl = document.getElementById('follow-msg');
+    const btn = document.querySelector('#follow-modal .submit-btn');
+    
+    if(!email) {
+        msgEl.innerText = "Please enter an email.";
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.innerText = "Subscribing...";
+    
+    try {
+        const res = await fetch('/api/subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email})
+        });
+        const data = await res.json();
+        if(data.success) {
+            closeFollowModal();
+            alert("Thanks for following! We'll email you about new posts.");
+        } else {
+            msgEl.innerText = data.error || data.message || "Error subscribing.";
+        }
+    } catch(e) {
+        msgEl.innerText = "Network Error";
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Subscribe";
+    }
+}
+
+// Profile Editing
+function openEditProfileModal() {
+    document.getElementById('edit-profile-modal').classList.remove('hidden');
+}
+
+function closeEditProfileModal() {
+    document.getElementById('edit-profile-modal').classList.add('hidden');
+}
+
+function previewEditPic(e) {
+    const preview = document.getElementById('edit-pic-preview');
+    if (e.target.files.length > 0) {
+        preview.src = URL.createObjectURL(e.target.files[0]);
+        preview.classList.remove('hidden');
+    } else {
+        preview.classList.add('hidden');
+    }
+}
+
+function updateBgMode() {
+    const bgType = document.getElementById('edit-profile-bg-type').value;
+    const colorInput = document.getElementById('edit-profile-bg-color');
+    const mediaInput = document.getElementById('edit-profile-bg-media');
+    
+    colorInput.classList.add('hidden');
+    mediaInput.classList.add('hidden');
+    
+    if (bgType === 'color') {
+        colorInput.classList.remove('hidden');
+    } else if (bgType === 'media') {
+        mediaInput.classList.remove('hidden');
+    }
+}
+
+function previewBgMedia(e) {
+    const preview = document.getElementById('bg-media-preview');
+    preview.innerHTML = '';
+    if (e.target.files.length > 0) {
+        const file = e.target.files[0];
+        const url = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+        if (file.type.startsWith('image/')) {
+            preview.innerHTML = `<img src="${url}" class="media-preview-item">`;
+        } else if (file.type.startsWith('video/')) {
+            preview.innerHTML = `<video src="${url}" class="media-preview-item" controls></video>`;
+        }
+    } else {
+        preview.classList.add('hidden');
+    }
+}
+
+function renderEditLinks(links) {
+    const container = document.getElementById('edit-links-container');
+    container.innerHTML = '';
+    links.forEach((link, i) => {
+        container.insertAdjacentHTML('beforeend', `
+            <div class="form-row" style="margin-bottom:5px" id="edit-link-row-${i}">
+                <input type="text" placeholder="Name (e.g. Twitter)" value="${link.platform}" class="edit-link-name" style="margin-bottom:0">
+                <input type="text" placeholder="https://" value="${link.url}" class="edit-link-url" style="margin-bottom:0">
+                <button type="button" onclick="this.parentElement.remove()" style="background:#ff4444;border:none;border-radius:5px;color:white;padding:0 10px;cursor:pointer">X</button>
+            </div>
+        `);
+    });
+}
+
+function addEditLink() {
+    const i = Date.now();
+    const container = document.getElementById('edit-links-container');
+    container.insertAdjacentHTML('beforeend', `
+        <div class="form-row" style="margin-bottom:5px" id="edit-link-row-${i}">
+            <input type="text" placeholder="Name (e.g. Twitter)" class="edit-link-name" style="margin-bottom:0">
+            <input type="text" placeholder="https://" class="edit-link-url" style="margin-bottom:0">
+            <button type="button" onclick="this.parentElement.remove()" style="background:#ff4444;border:none;border-radius:5px;color:white;padding:0 10px;cursor:pointer">X</button>
+        </div>
+    `);
+}
+
+function applyBg(type, val) {
+    if (type === 'color') {
+        document.body.style.background = val;
+    } else if (type === 'media') {
+        document.body.style.background = `url(${val}) no-repeat center center fixed`;
+        document.body.style.backgroundSize = 'cover';
+    } else {
+        document.body.style.background = ''; // revert to css preset
+    }
+}
+
+function updateCollectionsUI(collections) {
+    const filterContainer = document.getElementById('folder-filters');
+    if (filterContainer) {
+        filterContainer.innerHTML = `<button class="filter-btn active" onclick="loadPosts('')">All</button>`;
+        collections.forEach(col => {
+            filterContainer.innerHTML += `<button class="filter-btn" onclick="loadPosts('${col}')">${col}</button>`;
+        });
+    }
+    
+    const postFolder = document.getElementById('post-folder');
+    if (postFolder) {
+        postFolder.innerHTML = '';
+        collections.forEach(col => {
+            postFolder.innerHTML += `<option value="${col}">${col}</option>`;
+        });
+    }
+    
+    const editPostFolder = document.getElementById('edit-post-folder');
+    if (editPostFolder) {
+        editPostFolder.innerHTML = '';
+        collections.forEach(col => {
+            editPostFolder.innerHTML += `<option value="${col}">${col}</option>`;
+        });
+    }
+}
+
+async function saveProfile() {
+    const btn = document.querySelector('#edit-profile-modal .submit-btn');
+    btn.innerText = 'SAVING...';
+    btn.disabled = true;
+    
+    const formData = new FormData();
+    formData.append('username', document.getElementById('edit-profile-username').value);
+    formData.append('bio', document.getElementById('edit-profile-bio').value);
+    
+    // Process Collections
+    let rawCols = document.getElementById('edit-profile-collections').value;
+    let colArr = rawCols.split(',').map(c => c.trim()).filter(c => c);
+    formData.append('collections', JSON.stringify(colArr));
+    
+    // Process Links
+    const linkNames = document.querySelectorAll('.edit-link-name');
+    const linkUrls = document.querySelectorAll('.edit-link-url');
+    let linksArr = [];
+    for(let i = 0; i < linkNames.length; i++) {
+        const n = linkNames[i].value.trim();
+        const u = linkUrls[i].value.trim();
+        if(n && u) linksArr.push({platform: n, url: u});
+    }
+    formData.append('links', JSON.stringify(linksArr));
+    
+    // Process Background
+    const bgType = document.getElementById('edit-profile-bg-type').value;
+    formData.append('bg_type', bgType);
+    if (bgType === 'color') {
+        formData.append('bg_val', document.getElementById('edit-profile-bg-color').value);
+    } else if (bgType === 'media') {
+        const bgFile = document.getElementById('edit-profile-bg-media');
+        if (bgFile.files.length > 0) {
+            formData.append('bg_file', bgFile.files[0]);
+        }
+    } else {
+        formData.append('bg_val', 'preset');
+    }
+    
+    // Process Profile Pic File
+    const fileInput = document.getElementById('edit-profile-pic-input');
+    if (fileInput && fileInput.files.length > 0) {
+        formData.append('profile_pic', fileInput.files[0]);
+    }
+    
+    try {
+        const res = await fetch('/api/profile', {
+            method: 'PUT',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeEditProfileModal();
+            checkStatus();
+            loadPosts(currentFolder); // reload posts to update pics globally
+        } else {
+            document.getElementById('profile-error').innerText = 'Error saving profile';
+        }
+    } catch (e) {
+        document.getElementById('profile-error').innerText = 'Network Error';
+    } finally {
+        btn.innerText = 'Save Profile';
+        btn.disabled = false;
+    }
+}
+
+// Load and Render Posts
+async function loadPosts(folder = '') {
+    currentFolder = folder;
+    
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if ((folder === '' && btn.innerText === 'All') || 
+            btn.innerText.toLowerCase().includes(folder.toLowerCase()) && folder !== '') {
+            btn.classList.add('active');
+        }
+    });
+
+    try {
+        const res = await fetch(`/api/posts${folder ? '?folder=' + folder : ''}`);
+        const data = await res.json();
+        currentPosts = data.posts;
+        renderFeed();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function renderFeed() {
+    const feed = document.getElementById('feed');
+    feed.innerHTML = '';
+    
+    if (currentPosts.length === 0) {
+        feed.innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:20px;">[ NO_DATA_FOUND ]</div>`;
+        return;
+    }
+
+    currentPosts.forEach(post => {
+        const postEl = document.createElement('div');
+        postEl.className = 'post';
+        
+        // Media generation
+        let mediaHtml = '';
+        if (post.media && post.media.length > 0) {
+            mediaHtml = `<div class="post-media-grid">`;
+            post.media.forEach(m => {
+                if (m.type === 'image') {
+                    mediaHtml += `<img src="${m.url}" alt="Img" loading="lazy">`;
+                } else if (m.type === 'video') {
+                    mediaHtml += `<video controls src="${m.url}"></video>`;
+                } else if (m.type === 'audio') {
+                    mediaHtml += `<audio controls src="${m.url}"></audio>`;
+                }
+            });
+            mediaHtml += `</div>`;
+        }
+        
+        // Render Links & Embeds
+        let embedHtml = '';
+        if (post.links && Array.isArray(post.links)) {
+            post.links.forEach(url => {
+                const ytMatch = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+                if (ytMatch && ytMatch[2].length === 11) {
+                    const ytId = ytMatch[2];
+                    embedHtml += `<div class="post-embed" style="margin-bottom:10px;"><iframe width="100%" height="315" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:5px;"></iframe></div>`;
+                } else {
+                    embedHtml += `<div class="post-link" style="margin-bottom:10px;"><a href="${url}" target="_blank" style="color:var(--accent-secondary); text-decoration:underline; font-size:0.9rem;">🔗 ${url}</a></div>`;
+                }
+            });
+        }
+        
+        const dateObj = new Date(post.created_at);
+        const dateStr = dateObj.toLocaleString();
+        
+        let newTagHtml = '';
+        const now = new Date();
+        const diffDays = (now - dateObj) / (1000 * 60 * 60 * 24);
+        
+        let lastSeenId = parseInt(localStorage.getItem('viewerLastSeenPostId') || '0');
+        const isNewest = currentPosts.length > 0 && post.id === currentPosts[0].id;
+        
+        if (isNewest && diffDays <= 1.0 && post.id > lastSeenId) {
+            newTagHtml = `<span class="badge new-badge" data-post-id="${post.id}" style="background:var(--accent-primary); color:white; margin-left:10px; font-weight:bold; font-size:0.7rem; padding:2px 6px; border-radius:10px; display:inline-block; transition:opacity 1s; vertical-align:middle;">NEW</span>`;
+        }
+        
+        let tagsHtml = '';
+        if (post.tags) {
+            post.tags.split(',').forEach(t => {
+                if(t.trim()) tagsHtml += `<span class="badge tag-badge">#${t.trim()}</span>`;
+            });
+        }
+        
+        const ownerActions = isOwner ? `
+            <div class="owner-actions">
+                <button class="owner-btn" onclick="openEditModal(${post.id})">[Edit]</button>
+                <button class="owner-btn" style="color:#ff4444" onclick="deletePost(${post.id})">[Delete]</button>
+            </div>
+        ` : '';
+
+        // Comments HTML
+        const commentsCount = post.comments ? post.comments.length : 0;
+        let commentsListHtml = '';
+        if (post.comments) {
+            post.comments.forEach(c => {
+                const cDate = new Date(c.created_at).toLocaleString();
+                const delBtn = isOwner ? `<button class="comment-delete" onclick="deleteComment(${post.id}, ${c.id})">X</button>` : '';
+                commentsListHtml += `
+                    <div class="comment">
+                        <div class="comment-author">${c.author}</div>
+                        <div class="comment-content">${c.content}</div>
+                        <div class="comment-time">${cDate}</div>
+                        ${delBtn}
+                    </div>
+                `;
+            });
+        }
+
+        postEl.innerHTML = `
+            <div class="post-badges">
+                <span class="badge">${post.folder.toUpperCase()}</span>
+                ${tagsHtml}
+            </div>
+            
+            <div class="post-header">
+                <img src="${post.profile_pic}" alt="DP" class="profile-pic">
+                <div class="post-meta">
+                    <div class="username">${post.username} <span class="verified-badge">✓</span></div>
+                    <div class="time" style="display:flex; align-items:center;">${dateStr} ${newTagHtml}</div>
+                </div>
+            </div>
+            
+            ${post.title ? `<div class="post-title">${post.title}</div>` : ''}
+            <div class="post-content">${post.content}</div>
+            
+            ${mediaHtml}
+            ${embedHtml}
+            
+            <div class="post-actions">
+                <button class="action-btn" onclick="likePost(${post.id})">
+                    ♥ <span id="likes-${post.id}">${post.likes}</span>
+                </button>
+                <button class="action-btn" onclick="toggleComments(${post.id})">
+                    💬 <span id="comments-count-${post.id}">${commentsCount}</span>
+                </button>
+                ${ownerActions}
+            </div>
+
+            <div id="comments-section-${post.id}" class="comments-section">
+                <div id="comments-list-${post.id}">
+                    ${commentsListHtml}
+                </div>
+                <div class="add-comment-form">
+                    <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') prepareComment(${post.id})">
+                    <button class="add-comment-btn" onclick="prepareComment(${post.id})">POST</button>
+                </div>
+            </div>
+        `;
+        
+        feed.appendChild(postEl);
+    });
+    
+    // Setup observer for new badges to disappear after being seen
+    const newBadges = document.querySelectorAll('.new-badge');
+    if (newBadges.length > 0 && typeof IntersectionObserver !== 'undefined') {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const badge = entry.target;
+                    const pid = parseInt(badge.getAttribute('data-post-id'));
+                    let lastSeen = parseInt(localStorage.getItem('viewerLastSeenPostId') || '0');
+                    if (pid > lastSeen) {
+                        localStorage.setItem('viewerLastSeenPostId', pid);
+                    }
+                    setTimeout(() => {
+                        badge.style.opacity = '0';
+                        setTimeout(() => badge.remove(), 1000);
+                    }, 3000); // fade out after being seen for 3 seconds
+                    observer.unobserve(badge);
+                }
+            });
+        }, { threshold: 0.1 });
+        
+        newBadges.forEach(b => observer.observe(b));
+    }
+}
+
+// Create Post
+async function submitPost() {
+    const title = document.getElementById('post-title').value;
+    const content = document.getElementById('post-content').value;
+    const folder = document.getElementById('post-folder').value;
+    const tags = document.getElementById('post-tags').value;
+    const fileInput = document.getElementById('post-media');
+    
+    if (!content.trim() && selectedMediaFiles.length === 0) {
+        alert("Content or media is required.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('content', content);
+    formData.append('folder', folder);
+    formData.append('tags', tags);
+    formData.append('links', JSON.stringify(postLinks));
+    
+    for (let i = 0; i < selectedMediaFiles.length; i++) {
+        formData.append('media', selectedMediaFiles[i]);
+    }
+
+    const btn = document.querySelector('.create-card .submit-btn');
+    btn.innerText = 'U P L O A D I N G . . .';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/posts', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(">>> ENTRY BROADCASTED SUCCESSFULLY <<<");
+            // reset form
+            document.getElementById('post-title').value = '';
+            document.getElementById('post-content').value = '';
+            document.getElementById('post-tags').value = '';
+            fileInput.value = '';
+            selectedMediaFiles = [];
+            let fileCountEl = document.getElementById('file-count');
+            if(fileCountEl) fileCountEl.innerText = '0 files selected';
+            document.getElementById('media-preview-container').innerHTML = '';
+            document.getElementById('media-preview-container').classList.add('hidden');
+            
+            postLinks = [];
+            renderPostLinks();
+            
+            loadPosts(currentFolder);
+        } else {
+            showToast("ERR: " + data.error);
+        }
+    } catch (e) {
+        console.error(e);
+        showToast("ERR: BROADCAST FAILED");
+    } finally {
+        btn.innerText = '>> B O A R D C A S T <<';
+        btn.disabled = false;
+    }
+}
+
+// Edit / Delete post
+function deletePost(id) {
+    if (confirm("Initiate deletion protocol?")) {
+        fetch(`/api/posts/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) loadPosts(currentFolder);
+            });
+    }
+}
+
+function openEditModal(id) {
+    const post = currentPosts.find(p => p.id === id);
+    if (!post) return;
+    
+    document.getElementById('edit-post-id').value = id;
+    document.getElementById('edit-post-title').value = post.title || '';
+    document.getElementById('edit-post-content').value = post.content || '';
+    document.getElementById('edit-post-folder').value = post.folder || 'main';
+    document.getElementById('edit-post-tags').value = post.tags || '';
+    
+    document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+}
+
+async function saveEdit() {
+    const id = document.getElementById('edit-post-id').value;
+    const data = {
+        title: document.getElementById('edit-post-title').value,
+        content: document.getElementById('edit-post-content').value,
+        folder: document.getElementById('edit-post-folder').value,
+        tags: document.getElementById('edit-post-tags').value
+    };
+    
+    try {
+        const res = await fetch(`/api/posts/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.success) {
+            closeEditModal();
+            loadPosts(currentFolder);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+// Like functionality
+function likePost(id) {
+    fetch(`/api/posts/${id}/like`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById(`likes-${id}`).innerText = data.likes;
+                const p = currentPosts.find(x => x.id === id);
+                if (p) p.likes = data.likes;
+            }
+        });
+}
+
+// Comments functionality
+function toggleComments(id) {
+    const section = document.getElementById(`comments-section-${id}`);
+    if (section.classList.contains('active')) {
+        section.classList.remove('active');
+    } else {
+        section.classList.add('active');
+    }
+}
+
+// Viewer Name Modal logic
+let pendingCommentData = null;
+
+function prepareComment(postId) {
+    const inputEl = document.getElementById(`comment-input-${postId}`);
+    const content = inputEl.value.trim();
+    if (!content) return;
+    
+    if (isOwner) {
+        // Owner doesn't need to specify name
+        submitComment(postId, content, 'Owner');
+        inputEl.value = '';
+        return;
+    }
+    
+    let savedName = localStorage.getItem('viewer_name');
+    if (savedName) {
+        submitComment(postId, content, savedName);
+        inputEl.value = '';
+    } else {
+        // Request viewer name
+        pendingCommentData = { postId, content, inputEl };
+        document.getElementById('viewer-name-modal').classList.remove('hidden');
+        document.getElementById('viewer-name-input').focus();
+    }
+}
+
+function closeViewerNameModal() {
+    document.getElementById('viewer-name-modal').classList.add('hidden');
+    pendingCommentData = null;
+}
+
+function saveViewerNameAndComment() {
+    const name = document.getElementById('viewer-name-input').value.trim();
+    if (!name) {
+        alert("Name is required to comment.");
+        return;
+    }
+    localStorage.setItem('viewer_name', name);
+    closeViewerNameModal();
+    
+    if (pendingCommentData) {
+        submitComment(pendingCommentData.postId, pendingCommentData.content, name);
+        pendingCommentData.inputEl.value = '';
+        pendingCommentData = null;
+    }
+}
+
+async function submitComment(postId, content, author) {
+    try {
+        const res = await fetch(`/api/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ author, content })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            const listEl = document.getElementById(`comments-list-${postId}`);
+            const delBtn = isOwner ? `<button class="comment-delete" onclick="deleteComment(${postId}, ${data.comment_id})">X</button>` : '';
+            const newCommentHtml = `
+                <div class="comment">
+                    <div class="comment-author">${data.author}</div>
+                    <div class="comment-content">${data.content}</div>
+                    <div class="comment-time">${new Date(data.created_at).toLocaleString()}</div>
+                    ${delBtn}
+                </div>
+            `;
+            listEl.insertAdjacentHTML('beforeend', newCommentHtml);
+            
+            // update count
+            const p = currentPosts.find(x => x.id === postId);
+            if (p) {
+                if(!p.comments) p.comments = [];
+                p.comments.push(data);
+                document.getElementById(`comments-count-${postId}`).innerText = p.comments.length;
+            }
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function deleteComment(postId, commentId) {
+    if(!confirm("Erase this comment?")) return;
+    
+        fetch(`/api/comments/${commentId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                // simple refresh
+                loadPosts(currentFolder);
+            }
+        });
+}
+
+// Right Sidebar Logic (Obsessions & Reading)
+async function loadObsessions() {
+    try {
+        const res = await fetch('/api/obsessions');
+        const data = await res.json();
+        const list = document.getElementById('obsessions-list');
+        list.innerHTML = '';
+        if (data.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-dim); font-size:0.8rem;">Nothing yet!</div>';
+            return;
+        }
+        data.forEach(item => {
+            const ownerBtns = isOwner ? `
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <button class="sidebar-del-btn" onclick="openEditObsession(${item.id}, '${item.category.replace(/'/g,"\\'")}',' ${item.content.replace(/'/g,"\\'")}')">✏</button>
+                    <button class="sidebar-del-btn" style="color:#ff4444;" onclick="deleteObsession(${item.id})">✕</button>
+                </div>` : '';
+            const imgHtml = item.image_url ? `<img src="${item.image_url}" alt="Obsession" style="width:100%; margin-top:5px; border-radius:5px; display:block;">` : '';
+            list.innerHTML += `
+                <div class="obs-item">
+                    ${ownerBtns}
+                    <div class="obs-category">${item.category}:</div>
+                    <div>${item.content}</div>
+                    ${imgHtml}
+                </div>
+            `;
+        });
+    } catch(e) { console.error("OBS LOAD ERR:", e); }
+}
+
+async function loadReadingList() {
+    try {
+        const res = await fetch('/api/reading');
+        const data = await res.json();
+        const list = document.getElementById('reading-list');
+        list.innerHTML = '';
+        if (data.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-dim); font-size:0.8rem;">Nothing yet!</div>';
+            return;
+        }
+        data.forEach(item => {
+            const ownerBtns = isOwner ? `
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <button class="sidebar-del-btn" onclick="openEditReading(${item.id},'${item.title.replace(/'/g,"\\'")}','${(item.description||'').replace(/'/g,"\\'")}','${(item.app_used||'').replace(/'/g,"\\'")}','${(item.link||'').replace(/'/g,"\\'")}')">✏</button>
+                    <button class="sidebar-del-btn" style="color:#ff4444;" onclick="deleteReading(${item.id})">✕</button>
+                </div>` : '';
+            const imgHtml = item.cover_image ? `<img src="${item.cover_image}" class="read-cover">` : '';
+            const linkHtml = item.link ? `<a href="${item.link}" target="_blank" style="color:var(--accent-secondary);font-size:0.8rem;">[Read Here]</a>` : '';
+            list.innerHTML += `
+                <div class="read-item">
+                    ${ownerBtns}
+                    ${imgHtml}
+                    <div class="read-title">${item.title}</div>
+                    <div style="font-size:0.8rem; margin-bottom:5px; color:var(--text-dim);">${item.description}</div>
+                    <div style="font-size:0.8rem; color:var(--accent-primary);">App: ${item.app_used} ${linkHtml}</div>
+                </div>
+            `;
+        });
+    } catch(e) { console.error("READ LOAD ERR:", e); }
+}
+
+async function submitObsession() {
+    const category = document.getElementById('obs-category').value;
+    const content = document.getElementById('obs-content').value;
+    const imgInput = document.getElementById('obs-image');
+    if(!category || !content) {
+        showToast("Category and content are required.");
+        return;
+    }
+    const fd = new FormData();
+    fd.append('category', category);
+    fd.append('content', content);
+    if(imgInput.files[0]) fd.append('image', imgInput.files[0]);
+
+    try {
+        await fetch('/api/obsessions', {
+            method: 'POST',
+            body: fd
+        });
+        closeModal('add-obsession-modal');
+        document.getElementById('obs-category').value = '';
+        document.getElementById('obs-content').value = '';
+        imgInput.value = '';
+        showToast("Obsession Captured.");
+        loadObsessions();
+    } catch(e) {}
+}
+
+async function deleteObsession(id) {
+    showConfirm('Delete this obsession?', async () => {
+        await fetch('/api/obsessions/' + id, {method: 'DELETE'});
+        showToast("Deleted.");
+        loadObsessions();
+    });
+}
+
+function openEditObsession(id, category, content) {
+    document.getElementById('edit-obs-id').value = id;
+    document.getElementById('edit-obs-category').value = category.trim();
+    document.getElementById('edit-obs-content').value = content.trim();
+    document.getElementById('edit-obs-image').value = '';
+    openModal('edit-obsession-modal');
+}
+
+async function saveEditedObsession() {
+    const id = document.getElementById('edit-obs-id').value;
+    const fd = new FormData();
+    fd.append('category', document.getElementById('edit-obs-category').value);
+    fd.append('content', document.getElementById('edit-obs-content').value);
+    const imgFile = document.getElementById('edit-obs-image').files[0];
+    if(imgFile) fd.append('image', imgFile);
+    try {
+        const res = await fetch('/api/obsessions/' + id, {method: 'PUT', body: fd});
+        const data = await res.json();
+        if(data.success) {
+            showToast("Obsession updated!");
+            closeModal('edit-obsession-modal');
+            loadObsessions();
+        }
+    } catch(e) { showToast("Update failed."); }
+}
+
+function openEditReading(id, title, description, app_used, link) {
+    document.getElementById('edit-read-id').value = id;
+    document.getElementById('edit-read-title').value = title;
+    document.getElementById('edit-read-desc').value = description;
+    document.getElementById('edit-read-app').value = app_used;
+    document.getElementById('edit-read-link').value = link;
+    document.getElementById('edit-read-cover').value = '';
+    openModal('edit-reading-modal');
+}
+
+async function saveEditedReading() {
+    const id = document.getElementById('edit-read-id').value;
+    const fd = new FormData();
+    fd.append('title', document.getElementById('edit-read-title').value);
+    fd.append('description', document.getElementById('edit-read-desc').value);
+    fd.append('app_used', document.getElementById('edit-read-app').value);
+    fd.append('link', document.getElementById('edit-read-link').value);
+    const coverFile = document.getElementById('edit-read-cover').files[0];
+    if(coverFile) fd.append('cover_image', coverFile);
+    try {
+        const res = await fetch('/api/reading/' + id, {method: 'PUT', body: fd});
+        const data = await res.json();
+        if(data.success) {
+            showToast("Reading item updated!");
+            closeModal('edit-reading-modal');
+            loadReadingList();
+        }
+    } catch(e) { showToast("Update failed."); }
+}
+
+async function deleteReading(id) {
+    showConfirm('Delete this reading item?', async () => {
+        await fetch('/api/reading/' + id, {method: 'DELETE'});
+        showToast("Deleted.");
+        loadReadingList();
+    });
+}
+
+async function submitReading() {
+    const title = document.getElementById('read-title').value;
+    const desc = document.getElementById('read-desc').value;
+    const app_used = document.getElementById('read-app').value;
+    const link = document.getElementById('read-link').value;
+    const fileInput = document.getElementById('read-cover');
+    
+    if(!title) { showToast("Title is required."); return; }
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('description', desc);
+    fd.append('app_used', app_used);
+    fd.append('link', link);
+    if(fileInput.files[0]) fd.append('cover_image', fileInput.files[0]);
+    
+    try {
+        await fetch('/api/reading', {method: 'POST', body: fd});
+        closeModal('add-reading-modal');
+        document.getElementById('read-title').value = '';
+        document.getElementById('read-desc').value = '';
+        document.getElementById('read-app').value = '';
+        document.getElementById('read-link').value = '';
+        document.getElementById('read-cover').value = '';
+        showToast("Reading item added!");
+        loadReadingList();
+    } catch(e) { showToast("Failed to save."); }
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.remove('hidden');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+// Post Links Logic
+let postLinks = [];
+function addPostLink() {
+    const url = prompt("Enter link URL:");
+    if(url && url.trim()) {
+        postLinks.push(url.trim());
+        renderPostLinks();
+    }
+}
+function removePostLink(idx) {
+    postLinks.splice(idx, 1);
+    renderPostLinks();
+}
+function renderPostLinks() {
+    const container = document.getElementById('post-links-container');
+    if(!container) return;
+    container.innerHTML = '';
+    postLinks.forEach((link, i) => {
+        container.innerHTML += `
+            <div style="background:rgba(0,0,0,0.5); padding:8px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color); border-radius:5px;">
+                <a href="${link}" target="_blank" style="color:var(--accent-secondary); font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:85%;">${link}</a>
+                <button type="button" onclick="removePostLink(${i})" style="background:#ff4444; color:white; border:none; border-radius:3px; cursor:pointer; padding:3px 8px;">X</button>
+            </div>
+        `;
+    });
+}
+
+// Tag Suggestions Logic (Enhanced for multiple inputs)
+function showTagSuggestions(inputId = 'post-tags', suggestionsId = 'tag-suggestions') {
+    const input = document.getElementById(inputId);
+    const container = document.getElementById(suggestionsId);
+    if(!input || !container) return;
+    
+    const allTags = new Set();
+    currentPosts.forEach(p => {
+        if(p.tags) {
+            p.tags.split(',').forEach(t => {
+                const tagStr = t.trim();
+                if(tagStr) allTags.add(tagStr);
+            });
+        }
+    });
+    
+    const val = input.value;
+    const parts = val.split(',');
+    const activePart = parts[parts.length - 1].trim().toLowerCase();
+    
+    let suggestionsHtml = '';
+    Array.from(allTags).forEach(tag => {
+        if (!activePart || tag.toLowerCase().includes(activePart)) {
+            suggestionsHtml += `<div class="dropdown-item" onclick="addTag('${tag}', '${inputId}', '${suggestionsId}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; color: var(--text-main);">#${tag}</div>`;
+        }
+    });
+    
+    if(suggestionsHtml) {
+        container.innerHTML = suggestionsHtml;
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+function addTag(tag, inputId = 'post-tags', suggestionsId = 'tag-suggestions') {
+    const input = document.getElementById(inputId);
+    let parts = input.value.split(',');
+    parts.pop(); // Remove the partial text
+    if (parts.length > 0) {
+        input.value = parts.join(', ') + ', ' + tag + ', ';
+    } else {
+        input.value = tag + ', ';
+    }
+    document.getElementById(suggestionsId).classList.add('hidden');
+    input.focus();
+}
+
+// Global UI Interceptors
+function showToast(msg) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerText = msg;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.add('removing');
+        setTimeout(() => toast.remove(), 1000);
+    }, 4000);
+}
+
+function showConfirm(msg, onYes) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-msg').innerText = msg;
+    const yesBtn = document.getElementById('confirm-yes-btn');
+    
+    // Clear old listeners
+    const newYes = yesBtn.cloneNode(true);
+    yesBtn.parentNode.replaceChild(newYes, yesBtn);
+    
+    newYes.addEventListener('click', () => {
+        onYes();
+        closeModal('confirm-modal');
+    });
+    
+    openModal('confirm-modal');
+}
+
+// Edit Modal Parity Logic
+let editPostLinks = [];
+let editSelectedMediaFiles = [];
+
+function handleEditMediaSelect(e) {
+    for (let i = 0; i < e.target.files.length; i++) {
+        editSelectedMediaFiles.push(e.target.files[i]);
+    }
+    e.target.value = '';
+    renderEditMediaPreview();
+}
+
+function removeEditMedia(index) {
+    editSelectedMediaFiles.splice(index, 1);
+    renderEditMediaPreview();
+}
+
+function renderEditMediaPreview() {
+    const previewContainer = document.getElementById('edit-media-preview-container');
+    const fileCountEl = document.getElementById('edit-file-count');
+    if(!previewContainer || !fileCountEl) return;
+    previewContainer.innerHTML = '';
+    
+    fileCountEl.innerText = `${editSelectedMediaFiles.length} files selected`;
+    
+    if (editSelectedMediaFiles.length > 0) {
+        previewContainer.classList.remove('hidden');
+        editSelectedMediaFiles.forEach((file, index) => {
+            const url = URL.createObjectURL(file);
+            let mediaEl = '';
+            if (file.type.startsWith('image/')) {
+                mediaEl = `<img src="${url}" class="media-preview-item">`;
+            } else if (file.type.startsWith('video/')) {
+                mediaEl = `<video src="${url}" class="media-preview-item" controls></video>`;
+            } else if (file.type.startsWith('audio/')) {
+                mediaEl = `<audio src="${url}" controls style="width:100%"></audio>`;
+            }
+            previewContainer.innerHTML += `
+                <div style="position:relative">
+                    ${mediaEl}
+                    <button type="button" onclick="removeEditMedia(${index})" style="position:absolute;top:5px;right:5px;background:#ff4444;color:white;border:none;border-radius:50%;width:25px;height:25px;cursor:pointer;font-weight:bold;z-index:10;">X</button>
+                </div>
+            `;
+        });
+    } else {
+        previewContainer.classList.add('hidden');
+    }
+}
+
+function openEditModal(pid) {
+    const post = currentPosts.find(p => p.id === pid);
+    if(!post) return;
+    
+    document.getElementById('edit-post-id').value = pid;
+    document.getElementById('edit-post-title').value = post.title || '';
+    document.getElementById('edit-post-content').value = post.content || '';
+    document.getElementById('edit-post-tags').value = post.tags || '';
+    
+    // Populate folders
+    const folderSelect = document.getElementById('edit-post-folder');
+    folderSelect.innerHTML = '';
+    const profile = JSON.parse(localStorage.getItem('currentUserProfile') || '{}');
+    const collections = profile.collections || ["Main", "Poetry", "Art", "Ramblings"];
+    collections.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.innerText = c;
+        if(c === post.folder) opt.selected = true;
+        folderSelect.appendChild(opt);
+    });
+    
+    editPostLinks = post.links ? [...post.links] : [];
+    renderEditPostLinks();
+    
+    editSelectedMediaFiles = [];
+    renderEditMediaPreview();
+    
+    openModal('edit-post-modal');
+}
+
+function addEditPostLink() {
+    const url = prompt("Enter link (YouTube allowed):");
+    if(url && url.trim()) {
+        editPostLinks.push(url.trim());
+        renderEditPostLinks();
+    }
+}
+
+function removeEditPostLink(idx) {
+    editPostLinks.splice(idx, 1);
+    renderEditPostLinks();
+}
+
+function renderEditPostLinks() {
+    const container = document.getElementById('edit-post-links-container');
+    if(!container) return;
+    container.innerHTML = '';
+    editPostLinks.forEach((link, i) => {
+        container.innerHTML += `
+            <div style="background:rgba(0,0,0,0.5); padding:8px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color); border-radius:5px;">
+                <span style="font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:85%;">${link}</span>
+                <button type="button" onclick="removeEditPostLink(${i})" style="background:#ff4444; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>
+            </div>
+        `;
+    });
+}
+
+async function saveEditedPost() {
+    const id = document.getElementById('edit-post-id').value;
+    const fd = new FormData();
+    fd.append('title', document.getElementById('edit-post-title').value);
+    fd.append('content', document.getElementById('edit-post-content').value);
+    fd.append('folder', document.getElementById('edit-post-folder').value);
+    fd.append('tags', document.getElementById('edit-post-tags').value);
+    fd.append('links', JSON.stringify(editPostLinks));
+    
+    editSelectedMediaFiles.forEach(file => {
+        fd.append('media', file);
+    });
+    
+    try {
+        const res = await fetch(`/api/posts/${id}`, {
+            method: 'PUT',
+            body: fd
+        });
+        const data = await res.json();
+        if(data.success) {
+            showToast(">>> ENTRY RE-CALIBRATED <<<");
+            closeModal('edit-post-modal');
+            editSelectedMediaFiles = [];
+            renderEditMediaPreview();
+            loadPosts(currentFolder);
+        } else {
+            showToast("ERR: " + data.error);
+        }
+    } catch(e) { showToast("ERR: UPDATE FAILED"); }
+}
+
+async function deletePost(id) {
+    showConfirm("ERASE THIS MEMORY?", async () => {
+        await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+        showToast("MEMORY PURGED.");
+        loadPosts(currentFolder);
+    });
+}
+
+document.addEventListener('click', (e) => {
+    if(!e.target.closest('#post-tags') && !e.target.closest('#tag-suggestions')) {
+        const c = document.getElementById('tag-suggestions');
+        if(c) c.classList.add('hidden');
+    }
+});

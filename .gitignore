@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env
+
+# Flask / SQLite database (don't commit local DB)
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads (user-uploaded files - too large for git)
+static/uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Render / deployment secrets (never commit these)
+.env.local
