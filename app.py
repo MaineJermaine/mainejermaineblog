@@ -11,27 +11,26 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fjr1300A15')
+# Config
+MAIL_USER = os.environ.get('MAIL_USER', '')   
+MAIL_PASS = os.environ.get('MAIL_PASS', '')   
+BLOG_URL  = os.environ.get('BLOG_URL', 'http://localhost:5000')  
 
-# Email config — set these as environment variables or fill them in directly
-MAIL_USER = os.environ.get('MAIL_USER', '')   # Your Gmail address
-MAIL_PASS = os.environ.get('MAIL_PASS', '')   # Your Gmail App Password
-BLOG_URL  = os.environ.get('BLOG_URL', 'http://localhost:5000')  # Your public blog URL
-
-# Database Setup: Prefer PostgreSQL on Render if available, 
-# else use persistent data mount if on Render, else local SQLite.
 db_url = os.environ.get('DATABASE_URL')
 if db_url and db_url.startswith('postgres://'):
     db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
-if db_url:
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    app.config['UPLOAD_FOLDER'] = 'static/uploads'
-elif os.environ.get('RENDER'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/blog.db'
+if os.environ.get('RENDER'):
     app.config['UPLOAD_FOLDER'] = '/data/uploads'
 else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog.db'
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
+
+if db_url:
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+elif os.environ.get('RENDER'):
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/blog.db'
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog.db'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 # 50 MB max limit
