@@ -293,21 +293,24 @@ def handle_posts():
     )
     db.session.add(new_post)
     db.session.commit()
+    # Notify subscribers via real email (only for public posts AND if notify toggled)
+    notify_followers = request.form.get('notify_followers') == 'true'
     
-    # Notify subscribers via real email (only for public posts)
-    if not is_private:
+    if not is_private and notify_followers:
         if MAIL_USER and MAIL_PASS:
             subscribers = Subscriber.query.all()
             subscriber_emails = [s.email for s in subscribers]
             if subscriber_emails:
                 post_title   = title or "New Post"
                 post_snippet = (content[:200] + '...') if len(content) > 200 else content
+                
                 threading.Thread(
                     target=send_notification_emails,
                     args=(subscriber_emails, post_title, post_snippet),
                     daemon=True
                 ).start()
         else:
+            # Fallback for local testing log
             subscribers = Subscriber.query.all()
             for sub in subscribers:
                 print(f"[EMAIL NOT CONFIGURED] Would notify: {sub.email}")

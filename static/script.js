@@ -715,6 +715,7 @@ async function submitPost() {
     formData.append('tags', tags);
     formData.append('links', JSON.stringify(postLinks));
     formData.append('is_private', isPrivate.toString());
+    formData.append('notify_followers', document.getElementById('notify-followers').checked);
     
     for (let i = 0; i < selectedMediaFiles.length; i++) {
         formData.append('media', selectedMediaFiles[i]);
