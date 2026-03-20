@@ -1,13 +1,18 @@
 let isOwner = false;
 let currentFolder = '';
-let currentPosts = [];
+let currentPosts = [];   // all posts loaded so far
+let currentPage  = 1;
+let isLoadingPosts = false;
+let hasMorePosts   = true;
 let selectedMediaFiles = [];
+let currentCollections = ['Main'];  // populated from profile on load
 
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus().then(() => {
         // Load sidebars AFTER auth state is known so isOwner is correct
         loadObsessions();
         loadReadingList();
+        loadSongOfWeek();
     });
     loadPosts('');
     
@@ -95,6 +100,11 @@ async function checkStatus() {
         if (bgType === 'color') document.getElementById('edit-profile-bg-color').value = data.bg_val;
         updateBgMode();
         
+        // Store collections for use in modals
+        currentCollections = data.collections && data.collections.length > 0
+            ? data.collections
+            : ['Main'];
+
         applyBg(data.bg_type, data.bg_val);
         updateCollectionsUI(data.collections || []);
         renderEditLinks(data.links || []);
@@ -403,41 +413,116 @@ async function saveProfile() {
     }
 }
 
-// Load and Render Posts
-async function loadPosts(folder = '') {
+// Load and Render Posts (infinite scroll)
+async function loadPosts(folder = '', reset = true) {
+    if (isLoadingPosts) return;
     currentFolder = folder;
-    
+
+    if (reset) {
+        currentPage  = 1;
+        currentPosts = [];
+        hasMorePosts = true;
+        document.getElementById('feed').innerHTML = '';
+        removeScrollSentinel();
+    }
+
+    if (!hasMorePosts) return;
+
+    isLoadingPosts = true;
+    showScrollLoader(true);
+
     // Update active filter button
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.classList.remove('active');
-        if ((folder === '' && btn.innerText === 'All') || 
+        if ((folder === '' && btn.innerText === 'All') ||
             btn.innerText.toLowerCase().includes(folder.toLowerCase()) && folder !== '') {
             btn.classList.add('active');
         }
     });
 
     try {
-        const res = await fetch(`/api/posts${folder ? '?folder=' + folder : ''}`);
+        const url = `/api/posts?page=${currentPage}&per_page=5${folder ? '&folder=' + folder : ''}`;
+        const res  = await fetch(url);
         const data = await res.json();
-        currentPosts = data.posts;
-        renderFeed();
+
+        currentPosts = currentPosts.concat(data.posts);
+        hasMorePosts  = data.has_more;
+        currentPage++;
+
+        appendPostsToFeed(data.posts);
+
+        if (hasMorePosts) {
+            attachScrollSentinel();
+        } else {
+            removeScrollSentinel();
+            const feed = document.getElementById('feed');
+            if (currentPosts.length > 0) {
+                const endEl = document.createElement('div');
+                endEl.id = 'feed-end-msg';
+                endEl.style.cssText = 'text-align:center;color:var(--text-dim);padding:20px;font-size:0.85rem;';
+                endEl.innerText = '— end of feed —';
+                feed.appendChild(endEl);
+            }
+        }
+        if (currentPosts.length === 0 && !data.has_more) {
+            document.getElementById('feed').innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:20px;">[ NO_DATA_FOUND ]</div>`;
+        }
     } catch (e) {
         console.error(e);
+    } finally {
+        isLoadingPosts = false;
+        showScrollLoader(false);
     }
 }
 
-function renderFeed() {
-    const feed = document.getElementById('feed');
-    feed.innerHTML = '';
-    
-    if (currentPosts.length === 0) {
-        feed.innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:20px;">[ NO_DATA_FOUND ]</div>`;
-        return;
+function showScrollLoader(show) {
+    let el = document.getElementById('scroll-loader');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'scroll-loader';
+        el.style.cssText = 'text-align:center;padding:15px;color:var(--accent-secondary);font-size:0.85rem;letter-spacing:2px;';
+        el.innerText = 'loading...';
+        document.getElementById('feed').after(el);
     }
+    el.style.display = show ? 'block' : 'none';
+}
 
-    currentPosts.forEach(post => {
+let scrollSentinel = null;
+function attachScrollSentinel() {
+    removeScrollSentinel();
+    scrollSentinel = document.createElement('div');
+    scrollSentinel.id = 'scroll-sentinel';
+    scrollSentinel.style.height = '10px';
+    document.getElementById('feed').appendChild(scrollSentinel);
+
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isLoadingPosts && hasMorePosts) {
+            loadPosts(currentFolder, false);
+        }
+    }, { rootMargin: '200px' });
+    observer.observe(scrollSentinel);
+    scrollSentinel._observer = observer;
+}
+
+function removeScrollSentinel() {
+    if (scrollSentinel) {
+        if (scrollSentinel._observer) scrollSentinel._observer.disconnect();
+        scrollSentinel.remove();
+        scrollSentinel = null;
+    }
+    const endMsg = document.getElementById('feed-end-msg');
+    if (endMsg) endMsg.remove();
+}
+
+function appendPostsToFeed(posts) {
+    const feed = document.getElementById('feed');
+
+    posts.forEach(post => {
         const postEl = document.createElement('div');
         postEl.className = 'post';
+        // Add fade-in animation
+        postEl.style.cssText = 'opacity:0; transform:translateY(10px); transition: opacity 0.4s ease, transform 0.4s ease;';
+        setTimeout(() => { postEl.style.opacity = '1'; postEl.style.transform = 'translateY(0)'; }, 50);
         
         // Media generation
         let mediaHtml = '';
@@ -454,18 +539,37 @@ function renderFeed() {
             });
             mediaHtml += `</div>`;
         }
-        
         // Render Links & Embeds
         let embedHtml = '';
         if (post.links && Array.isArray(post.links)) {
             post.links.forEach(url => {
+                // YouTube
                 const ytMatch = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
                 if (ytMatch && ytMatch[2].length === 11) {
                     const ytId = ytMatch[2];
                     embedHtml += `<div class="post-embed" style="margin-bottom:10px;"><iframe width="100%" height="315" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:5px;"></iframe></div>`;
-                } else {
-                    embedHtml += `<div class="post-link" style="margin-bottom:10px;"><a href="${url}" target="_blank" style="color:var(--accent-secondary); text-decoration:underline; font-size:0.9rem;">🔗 ${url}</a></div>`;
+                    return;
                 }
+                // Spotify — tracks, albums, playlists, artists, episodes
+                // e.g. https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=...
+                const spotifyMatch = url.match(/open\.spotify\.com\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/);
+                if (spotifyMatch) {
+                    const spType = spotifyMatch[1];
+                    const spId   = spotifyMatch[2];
+                    // Tracks/episodes use compact height (152px); albums/playlists use taller (352px)
+                    const spHeight = (spType === 'track' || spType === 'episode') ? '152' : '352';
+                    embedHtml += `
+                        <div class="post-embed" style="margin-bottom:10px;">
+                            <iframe style="border-radius:12px;"
+                                src="https://open.spotify.com/embed/${spType}/${spId}?utm_source=generator&theme=0"
+                                width="100%" height="${spHeight}" frameborder="0"
+                                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                                loading="lazy"></iframe>
+                        </div>`;
+                    return;
+                }
+                // Generic link fallback
+                embedHtml += `<div class="post-link" style="margin-bottom:10px;"><a href="${url}" target="_blank" style="color:var(--accent-secondary); text-decoration:underline; font-size:0.9rem;">🔗 ${url}</a></div>`;
             });
         }
         
@@ -482,6 +586,11 @@ function renderFeed() {
         if (isNewest && diffDays <= 1.0 && post.id > lastSeenId) {
             newTagHtml = `<span class="badge new-badge" data-post-id="${post.id}" style="background:var(--accent-primary); color:white; margin-left:10px; font-weight:bold; font-size:0.7rem; padding:2px 6px; border-radius:10px; display:inline-block; transition:opacity 1s; vertical-align:middle;">NEW</span>`;
         }
+        
+        // Private indicator (only visible to owner)
+        const privateTag = post.is_private && isOwner
+            ? `<span class="badge" style="background:#333; color:#ff8c00; border:1px solid #ff8c00;">🔒 PRIVATE</span>`
+            : '';
         
         let tagsHtml = '';
         if (post.tags) {
@@ -518,6 +627,7 @@ function renderFeed() {
         postEl.innerHTML = `
             <div class="post-badges">
                 <span class="badge">${post.folder.toUpperCase()}</span>
+                ${privateTag}
                 ${tagsHtml}
             </div>
             
@@ -559,7 +669,7 @@ function renderFeed() {
         feed.appendChild(postEl);
     });
     
-    // Setup observer for new badges to disappear after being seen
+    // Setup observer for new badges
     const newBadges = document.querySelectorAll('.new-badge');
     if (newBadges.length > 0 && typeof IntersectionObserver !== 'undefined') {
         const observer = new IntersectionObserver((entries) => {
@@ -568,20 +678,20 @@ function renderFeed() {
                     const badge = entry.target;
                     const pid = parseInt(badge.getAttribute('data-post-id'));
                     let lastSeen = parseInt(localStorage.getItem('viewerLastSeenPostId') || '0');
-                    if (pid > lastSeen) {
-                        localStorage.setItem('viewerLastSeenPostId', pid);
-                    }
-                    setTimeout(() => {
-                        badge.style.opacity = '0';
-                        setTimeout(() => badge.remove(), 1000);
-                    }, 3000); // fade out after being seen for 3 seconds
+                    if (pid > lastSeen) localStorage.setItem('viewerLastSeenPostId', pid);
+                    setTimeout(() => { badge.style.opacity = '0'; setTimeout(() => badge.remove(), 1000); }, 3000);
                     observer.unobserve(badge);
                 }
             });
         }, { threshold: 0.1 });
-        
         newBadges.forEach(b => observer.observe(b));
     }
+}
+
+// Keep old renderFeed as an alias so other callers don't break
+function renderFeed() {
+    document.getElementById('feed').innerHTML = '';
+    appendPostsToFeed(currentPosts);
 }
 
 // Create Post
@@ -590,10 +700,11 @@ async function submitPost() {
     const content = document.getElementById('post-content').value;
     const folder = document.getElementById('post-folder').value;
     const tags = document.getElementById('post-tags').value;
+    const isPrivate = document.getElementById('post-visibility').value === 'private';
     const fileInput = document.getElementById('post-media');
     
     if (!content.trim() && selectedMediaFiles.length === 0) {
-        alert("Content or media is required.");
+        showToast("Content or media is required.");
         return;
     }
 
@@ -603,6 +714,7 @@ async function submitPost() {
     formData.append('folder', folder);
     formData.append('tags', tags);
     formData.append('links', JSON.stringify(postLinks));
+    formData.append('is_private', isPrivate.toString());
     
     for (let i = 0; i < selectedMediaFiles.length; i++) {
         formData.append('media', selectedMediaFiles[i]);
@@ -1008,6 +1120,108 @@ async function submitReading() {
     } catch(e) { showToast("Failed to save."); }
 }
 
+
+// Song of the Week Logic
+
+async function loadSongOfWeek() {
+    try {
+        const res = await fetch('/api/song-of-week');
+        const song = await res.json();
+        const section = document.getElementById('song-of-week-section');
+        const container = document.getElementById('song-of-week-container');
+        
+        if (!song) {
+            section.classList.add('hidden');
+            return;
+        }
+        
+        section.classList.remove('hidden');
+        
+        // Spotify detection
+        const url = song.spotify_url;
+        const spotifyMatch = url.match(/open\.spotify\.com\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/);
+        let spotifyEmbed = '';
+        if (spotifyMatch) {
+            const spType = spotifyMatch[1];
+            const spId   = spotifyMatch[2];
+            spotifyEmbed = `
+                <iframe style="border-radius:12px;" 
+                    src="https://open.spotify.com/embed/${spType}/${spId}?utm_source=generator&theme=0" 
+                    width="100%" height="152" frameborder="0" 
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+                    loading="lazy"></iframe>`;
+        } else {
+            spotifyEmbed = `<div style="padding:10px; background:rgba(255,255,255,0.05); border-radius:5px; font-size:0.8rem;">[ Invalid Spotify URL ]</div>`;
+        }
+        
+        const ownerBtns = isOwner ? `
+            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                <button class="sidebar-del-btn" onclick="openEditSong(${song.id}, '${song.spotify_url.replace(/'/g,"\\'")}',' ${ (song.description||'').replace(/'/g,"\\'") }')">✏</button>
+                <button class="sidebar-del-btn" style="color:#ff4444;" onclick="deleteSong(${song.id})">✕</button>
+            </div>` : '';
+            
+        container.innerHTML = `
+            ${ownerBtns}
+            ${spotifyEmbed}
+            ${song.description ? `<div style="font-size:0.8rem; margin-top:10px; color:var(--text-dim); line-height:1.4;">${song.description}</div>` : ''}
+        `;
+    } catch(e) { console.error("SONG LOAD ERR:", e); }
+}
+
+async function submitSongOfWeek() {
+    const spotify_url = document.getElementById('song-spotify-url').value;
+    const description = document.getElementById('song-description').value;
+    if(!spotify_url) { showToast("Spotify URL is required."); return; }
+    
+    try {
+        await fetch('/api/song-of-week', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ spotify_url, description })
+        });
+        closeModal('add-song-modal');
+        document.getElementById('song-spotify-url').value = '';
+        document.getElementById('song-description').value = '';
+        showToast("Song of the Week Updated.");
+        loadSongOfWeek();
+    } catch(e) { showToast("Failed to set song."); }
+}
+
+function openEditSong(id, url, desc) {
+    document.getElementById('edit-song-id').value = id;
+    document.getElementById('edit-song-spotify-url').value = url;
+    document.getElementById('edit-song-description').value = desc.trim();
+    openModal('edit-song-modal');
+}
+
+async function saveEditedSong() {
+    const id = document.getElementById('edit-song-id').value;
+    const spotify_url = document.getElementById('edit-song-spotify-url').value;
+    const description = document.getElementById('edit-song-description').value;
+    
+    try {
+        const res = await fetch('/api/song-of-week/' + id, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ spotify_url, description })
+        });
+        const data = await res.json();
+        if(data.success) {
+            showToast("Song updated!");
+            closeModal('edit-song-modal');
+            loadSongOfWeek();
+        }
+    } catch(e) { showToast("Update failed."); }
+}
+
+async function deleteSong(id) {
+    showConfirm('Remove Song of the Week?', async () => {
+        await fetch('/api/song-of-week/' + id, {method: 'DELETE'});
+        showToast("Removed.");
+        loadSongOfWeek();
+    });
+}
+
 function openModal(id) {
     document.getElementById(id).classList.remove('hidden');
 }
@@ -1180,21 +1394,31 @@ function openEditModal(pid) {
     document.getElementById('edit-post-content').value = post.content || '';
     document.getElementById('edit-post-tags').value = post.tags || '';
     
-    // Populate folders
+    // Populate folder dropdown from live collections
     const folderSelect = document.getElementById('edit-post-folder');
     folderSelect.innerHTML = '';
-    const profile = JSON.parse(localStorage.getItem('currentUserProfile') || '{}');
-    const collections = profile.collections || ["Main", "Poetry", "Art", "Ramblings"];
-    collections.forEach(c => {
+    currentCollections.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c;
         opt.innerText = c;
-        if(c === post.folder) opt.selected = true;
+        if (c.toLowerCase() === (post.folder || '').toLowerCase()) opt.selected = true;
         folderSelect.appendChild(opt);
     });
+    // If current folder isn't in collections (e.g. old post), add it
+    if (post.folder && !currentCollections.some(c => c.toLowerCase() === post.folder.toLowerCase())) {
+        const opt = document.createElement('option');
+        opt.value = post.folder;
+        opt.innerText = post.folder;
+        opt.selected = true;
+        folderSelect.prepend(opt);
+    }
     
     editPostLinks = post.links ? [...post.links] : [];
     renderEditPostLinks();
+    
+    // Restore visibility toggle
+    const visEl = document.getElementById('edit-post-visibility');
+    if (visEl) visEl.value = post.is_private ? 'private' : 'public';
     
     editSelectedMediaFiles = [];
     renderEditMediaPreview();
@@ -1237,6 +1461,7 @@ async function saveEditedPost() {
     fd.append('folder', document.getElementById('edit-post-folder').value);
     fd.append('tags', document.getElementById('edit-post-tags').value);
     fd.append('links', JSON.stringify(editPostLinks));
+    fd.append('is_private', (document.getElementById('edit-post-visibility').value === 'private').toString());
     
     editSelectedMediaFiles.forEach(file => {
         fd.append('media', file);

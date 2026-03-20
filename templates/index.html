@@ -58,6 +58,10 @@
                         <!-- Populated dynamically via JS from collections -->
                         <option value="Main">Main</option>
                     </select>
+                    <select id="post-visibility" title="Visibility">
+                        <option value="public">🌍 Public</option>
+                        <option value="private">🔒 Private (Only Me)</option>
+                    </select>
                     <div style="position:relative; flex-grow:1; width:100%;">
                         <input type="text" id="post-tags" placeholder="Tags (comma separated)" oninput="showTagSuggestions()" onfocus="showTagSuggestions()" style="margin-bottom:0;">
                         <div id="tag-suggestions" class="hidden" style="position:absolute; width:100%; max-height:150px; overflow-y:auto; background:var(--card-bg); border:1px solid var(--border-color); border-radius:5px; z-index:15; box-shadow:0 5px 15px rgba(0,0,0,0.8);"></div>
@@ -93,10 +97,16 @@
             <!-- Right Sidebar -->
             <aside class="right-sidebar" id="right-sidebar">
                 <div class="sidebar-buttons">
+                    <button class="add-btn glitch-btn hidden owner-only" onclick="openModal('add-song-modal')">+ Set Song of Week</button>
                     <button class="add-btn glitch-btn hidden owner-only" onclick="openModal('add-obsession-modal')">+ Add Obsession</button>
                     <button class="add-btn glitch-btn hidden owner-only" onclick="openModal('add-reading-modal')">+ Add Reading Log</button>
                 </div>
                 <div class="sidebar-scroller">
+                    <div id="song-of-week-section" class="sidebar-section hidden">
+                        <h2>Song of the Week</h2>
+                        <div id="song-of-week-container"></div>
+                    </div>
+
                     <div class="sidebar-section">
                         <h2>What I'm currently obsessed with:</h2>
                         <div id="obsessions-list" class="sidebar-list"></div>
@@ -154,6 +164,12 @@
             <label class="modal-label">Links</label>
             <div id="edit-post-links-container" style="margin-bottom:10px;"></div>
             <button type="button" class="glitch-btn" onclick="addEditPostLink()" style="margin-bottom:15px;">+ Add Link</button>
+
+            <label class="modal-label">Visibility</label>
+            <select id="edit-post-visibility" style="margin-bottom:15px;">
+                <option value="public">🌍 Public</option>
+                <option value="private">🔒 Private (Only Me)</option>
+            </select>
 
             <button onclick="saveEditedPost()" class="submit-btn glitch-btn">>> UPDATE POST <<</button>
         </div>
@@ -314,5 +330,27 @@
 
     <!-- Scripts -->
     <script src="/static/script.js"></script>
+    <!-- Add/Edit Song of Week Modals -->
+    <div id="add-song-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-song-modal')">&times;</span>
+            <h2>Set Song of the Week</h2>
+            <input type="text" id="song-spotify-url" placeholder="Spotify URL (track/album/playlist)">
+            <textarea id="song-description" placeholder="Description (Optional)"></textarea>
+            <button onclick="submitSongOfWeek()" class="submit-btn glitch-btn">SET SONG</button>
+        </div>
+    </div>
+
+    <div id="edit-song-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('edit-song-modal')">&times;</span>
+            <h2>Update Song of the Week</h2>
+            <input type="hidden" id="edit-song-id">
+            <input type="text" id="edit-song-spotify-url" placeholder="Spotify URL">
+            <textarea id="edit-song-description" placeholder="Description (Optional)"></textarea>
+            <button onclick="saveEditedSong()" class="submit-btn glitch-btn">UPDATE SONG</button>
+        </div>
+    </div>
+
 </body>
 </html>

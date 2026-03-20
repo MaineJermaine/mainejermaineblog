@@ -58,6 +58,7 @@ class Post(db.Model):
     username = db.Column(db.String(50), default="Owner")
     profile_pic = db.Column(db.String(200), default="/static/default_pic.jpg")
     media = db.Column(db.Text, default="[]") # JSON list of file info dicts
+    is_private = db.Column(db.Boolean, default=False)  # private = owner-only
     comments = db.relationship('Comment', backref='post', cascade="all, delete-orphan", lazy=True)
 
 class Comment(db.Model):
@@ -98,6 +99,12 @@ class ReadingItem(db.Model):
     link = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class SongOfWeek(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    spotify_url = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 with app.app_context():
     db.create_all()
     if not Profile.query.get(1):
@@ -121,6 +128,14 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass  # Column already exists
+        # Check and add Post.is_private if missing
+        try:
+            conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+        # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
+        db.create_all()
 
 @app.route('/')
 def index():
@@ -200,10 +215,16 @@ def update_profile():
 def handle_posts():
     if request.method == 'GET':
         folder_filter = request.args.get('folder')
+        page     = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 5))
         query = Post.query
         if folder_filter:
             query = query.filter_by(folder=folder_filter)
-        posts = query.order_by(Post.created_at.desc()).all()
+        # Hide private posts from non-owners
+        if not session.get('is_owner'):
+            query = query.filter_by(is_private=False)
+        total = query.count()
+        posts = query.order_by(Post.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
         
         profile = Profile.query.get(1)
         results = []
@@ -220,9 +241,10 @@ def handle_posts():
                 "profile_pic": profile.profile_pic,
                 "media": json.loads(p.media),
                 "links": json.loads(p.links) if hasattr(p, 'links') and p.links else [],
+                "is_private": p.is_private,
                 "comments": [{"id": c.id, "author": c.author, "content": c.content, "created_at": c.created_at.isoformat()} for c in p.comments]
             })
-        return jsonify({"posts": results})
+        return jsonify({"posts": results, "total": total, "page": page, "per_page": per_page, "has_more": (page * per_page) < total})
     
     # POST
     if not session.get('is_owner'):
@@ -233,6 +255,7 @@ def handle_posts():
     folder = request.form.get('folder', 'main')
     tags = request.form.get('tags', '')
     links_data = request.form.get('links', '[]')
+    is_private = request.form.get('is_private', 'false').lower() == 'true'
     
     files = request.files.getlist('media')
     media_data = []
@@ -260,28 +283,29 @@ def handle_posts():
         folder=folder,
         tags=tags,
         links=links_data,
-        media=json.dumps(media_data)
+        media=json.dumps(media_data),
+        is_private=is_private
     )
     db.session.add(new_post)
     db.session.commit()
     
-    # Notify subscribers via real email (runs in background thread)
-    if MAIL_USER and MAIL_PASS:
-        subscribers = Subscriber.query.all()
-        subscriber_emails = [s.email for s in subscribers]
-        if subscriber_emails:
-            post_title   = title or "New Post"
-            post_snippet = (content[:200] + '...') if len(content) > 200 else content
-            threading.Thread(
-                target=send_notification_emails,
-                args=(subscriber_emails, post_title, post_snippet),
-                daemon=True
-            ).start()
-    else:
-        # Email not configured — log to console
-        subscribers = Subscriber.query.all()
-        for sub in subscribers:
-            print(f"[EMAIL NOT CONFIGURED] Would notify: {sub.email}")
+    # Notify subscribers via real email (only for public posts)
+    if not is_private:
+        if MAIL_USER and MAIL_PASS:
+            subscribers = Subscriber.query.all()
+            subscriber_emails = [s.email for s in subscribers]
+            if subscriber_emails:
+                post_title   = title or "New Post"
+                post_snippet = (content[:200] + '...') if len(content) > 200 else content
+                threading.Thread(
+                    target=send_notification_emails,
+                    args=(subscriber_emails, post_title, post_snippet),
+                    daemon=True
+                ).start()
+        else:
+            subscribers = Subscriber.query.all()
+            for sub in subscribers:
+                print(f"[EMAIL NOT CONFIGURED] Would notify: {sub.email}")
     
     return jsonify({"success": True, "post_id": new_post.id})
 
@@ -377,6 +401,11 @@ def post_detail(post_id):
                 except (ValueError, TypeError):
                     post.links = '[]'
             
+        if 'is_private' in data:
+            # Form sends string 'true'/'false', JSON sends bool
+            val = data['is_private']
+            post.is_private = val if isinstance(val, bool) else val.lower() == 'true'
+
         # Handle New Media in Edit
         new_files = request.files.getlist('media')
         if new_files:
@@ -567,6 +596,52 @@ def delete_reading(r_id):
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(file_path)
             item.cover_image = "/uploads/" + filename
+        db.session.commit()
+        return jsonify({"success": True})
+
+@app.route('/api/song-of-week', methods=['GET', 'POST'])
+def handle_song_of_week():
+    if request.method == 'GET':
+        # Get the latest one
+        song = SongOfWeek.query.order_by(SongOfWeek.created_at.desc()).first()
+        if not song:
+            return jsonify(None)
+        return jsonify({
+            "id": song.id,
+            "spotify_url": song.spotify_url,
+            "description": song.description
+        })
+    
+    if not session.get('is_owner'):
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    data = request.json
+    new_song = SongOfWeek(
+        spotify_url=data.get('spotify_url', ''),
+        description=data.get('description', '')
+    )
+    db.session.add(new_song)
+    db.session.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/song-of-week/<int:s_id>', methods=['PUT', 'DELETE'])
+def song_of_week_detail(s_id):
+    if not session.get('is_owner'):
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    song = SongOfWeek.query.get_or_404(s_id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(song)
+        db.session.commit()
+        return jsonify({"success": True})
+        
+    if request.method == 'PUT':
+        data = request.json
+        if 'spotify_url' in data:
+            song.spotify_url = data['spotify_url']
+        if 'description' in data:
+            song.description = data['description']
         db.session.commit()
         return jsonify({"success": True})
 
