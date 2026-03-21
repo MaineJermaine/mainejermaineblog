@@ -177,22 +177,44 @@ with app.app_context():
         
         # Check and add Follower.is_silenced if missing (on new table name)
         try:
-            conn.execute(text("ALTER TABLE follower ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
+            conn.execute(text("ALTER TABLE follower ADD COLUMN is_silenced BOOLEAN DEFAULT FALSE"))
             conn.commit()
         except: pass
 
         # Check and add Post.is_private if missing
         try:
-            conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
+            conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT FALSE"))
             conn.commit()
         except: pass
-        # 2FA Migrations
+        # 2FA Migrations (Postgres + SQLite Compatible)
         try:
-            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT 1"))
+            # Check for two_factor_enabled
+            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT TRUE"))
+            conn.commit()
+            print("MIGRATION: Added two_factor_enabled to profile")
+        except: pass
+        
+        try:
             conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER DEFAULT 1"))
-            conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success DATETIME"))
+            conn.commit()
+            print("MIGRATION: Added two_factor_cooldown_days to profile")
+        except: pass
+        
+        try:
+            # Postgres needs 'TIMESTAMP' or 'DATETIME' depending on dialect, we use simple DATETIME for SQLAlchemy compat
+            conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP"))
+            conn.commit()
+            print("MIGRATION: Added last_2fa_success to profile")
+        except: 
+            try:
+                conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success DATETIME"))
+                conn.commit()
+            except: pass
+            
+        try:
             conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)"))
             conn.commit()
+            print("MIGRATION: Added current_2fa_code to profile")
         except: pass
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
