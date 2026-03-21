@@ -83,6 +83,7 @@ class Profile(db.Model):
     username = db.Column(db.String(50), default="Owner")
     bio = db.Column(db.Text, default="Welcome to my edgy blog!")
     profile_pic = db.Column(db.String(200), default="/static/default_pic.jpg")
+    favicon_url = db.Column(db.String(200), default="/static/default_pic.jpg")
     links = db.Column(db.Text, default="[]") # JSON list of objects
     collections = db.Column(db.Text, default='["Main", "Poetry", "Art", "Ramblings"]')
     bg_type = db.Column(db.String(20), default="preset")
@@ -188,6 +189,7 @@ def status():
         "is_owner": session.get('is_owner', False),
         "username": profile.username,
         "profile_pic": profile.profile_pic,
+        "favicon_url": profile.favicon_url,
         "bio": profile.bio,
         "links": json.loads(profile.links),
         "collections": json.loads(profile.collections),
@@ -231,9 +233,17 @@ def update_profile():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         bg_file.save(file_path)
         profile.bg_val = "/uploads/" + filename
+
+    # Handle Favicon
+    fav_file = request.files.get('favicon')
+    if fav_file and fav_file.filename:
+        filename = "fav_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(fav_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        fav_file.save(file_path)
+        profile.favicon_url = "/uploads/" + filename
         
     db.session.commit()
-    return jsonify({"success": True, "profile_pic": profile.profile_pic, "bg_val": profile.bg_val})
+    return jsonify({"success": True})
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():

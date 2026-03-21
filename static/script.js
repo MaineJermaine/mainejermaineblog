@@ -77,9 +77,9 @@ async function checkStatus() {
         document.getElementById('side-username').innerText = data.username;
         document.getElementById('side-profile-pic').src = data.profile_pic;
         
-        // Update Favicon to Profile Pic
+        // Update Favicon to Custom One
         const favicon = document.getElementById('dynamic-favicon');
-        if (favicon) favicon.href = data.profile_pic;
+        if (favicon && data.favicon_url) favicon.href = data.favicon_url;
 
         document.getElementById('side-bio').innerText = data.bio || '';
         
@@ -249,6 +249,16 @@ function closeEditProfileModal() {
 
 function previewEditPic(e) {
     const preview = document.getElementById('edit-pic-preview');
+    if (e.target.files.length > 0) {
+        preview.src = URL.createObjectURL(e.target.files[0]);
+        preview.classList.remove('hidden');
+    } else {
+        preview.classList.add('hidden');
+    }
+}
+
+function previewFavicon(e) {
+    const preview = document.getElementById('edit-fav-preview');
     const favicon = document.getElementById('dynamic-favicon');
     if (e.target.files.length > 0) {
         const url = URL.createObjectURL(e.target.files[0]);
@@ -398,6 +408,12 @@ async function saveProfile() {
     const fileInput = document.getElementById('edit-profile-pic-input');
     if (fileInput && fileInput.files.length > 0) {
         formData.append('profile_pic', fileInput.files[0]);
+    }
+
+    // Process Favicon File
+    const favInput = document.getElementById('edit-favicon-input');
+    if (favInput && favInput.files.length > 0) {
+        formData.append('favicon', favInput.files[0]);
     }
     
     try {
