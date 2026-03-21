@@ -11,6 +11,8 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fjr1300A15')
+from datetime import datetime, timedelta
+
 # Config
 MAIL_USER = os.environ.get('MAIL_USER', '')   
 MAIL_PASS = os.environ.get('MAIL_PASS', '')   
@@ -24,6 +26,10 @@ if os.environ.get('RENDER'):
     app.config['UPLOAD_FOLDER'] = '/data/uploads'
 else:
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
+
+# Utility: Get Singapore Time (GMT+8)
+def get_sg_time():
+    return datetime.utcnow() + timedelta(hours=8)
 
 if db_url:
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -58,7 +64,7 @@ class Post(db.Model):
     tags = db.Column(db.String(200), default="")
     links = db.Column(db.Text, default="[]") # JSON list of links
     likes = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
     username = db.Column(db.String(50), default="Owner")
     profile_pic = db.Column(db.String(200), default="/static/default_pic.jpg")
     media = db.Column(db.Text, default="[]") # JSON list of file info dicts
@@ -70,7 +76,7 @@ class Comment(db.Model):
     post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
     author = db.Column(db.String(100), nullable=False)
     content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
 
 class Profile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -85,14 +91,14 @@ class Profile(db.Model):
 class Subscriber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
 
 class Obsession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     category = db.Column(db.String(100), nullable=False)
     content = db.Column(db.String(255), nullable=False)
     image_url = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
 
 class ReadingItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -101,13 +107,13 @@ class ReadingItem(db.Model):
     description = db.Column(db.Text)
     app_used = db.Column(db.String(100))
     link = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
 
 class SongOfWeek(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     spotify_url = db.Column(db.String(500), nullable=False)
     description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_sg_time)
 
 with app.app_context():
     db.create_all()
@@ -204,16 +210,15 @@ def update_profile():
         # text based bg fallback
         profile.bg_val = request.form['bg_val']
         
-    # handle background media
     bg_file = request.files.get('bg_file')
     if bg_file and bg_file.filename:
-        filename = secure_filename(bg_file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], "bg_" + filename)
+        filename = "bg_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(bg_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         bg_file.save(file_path)
-        profile.bg_val = "/" + file_path.replace("\\", "/")
+        profile.bg_val = "/uploads/" + filename
         
     db.session.commit()
-    return jsonify({"success": True, "profile_pic": profile.profile_pic})
+    return jsonify({"success": True, "profile_pic": profile.profile_pic, "bg_val": profile.bg_val})
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():
@@ -528,12 +533,10 @@ def delete_obsession(o_id):
         return jsonify({"success": True})
     
     if request.method == 'PUT':
-        category = request.form.get('category')
-        content = request.form.get('content')
-        if category:
-            ob.category = category
-        if content:
-            ob.content = content
+        if 'category' in request.form:
+            ob.category = request.form['category']
+        if 'content' in request.form:
+            ob.content = request.form['content']
         file = request.files.get('image')
         if file and file.filename:
             filename = "obs_" + secure_filename(file.filename)

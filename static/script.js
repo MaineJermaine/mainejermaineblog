@@ -452,9 +452,18 @@ async function loadPosts(folder = '', reset = true) {
         appendPostsToFeed(data.posts);
 
         if (hasMorePosts) {
-            attachScrollSentinel();
+            // Desk: Sentinel, Mob: Button
+            if (window.innerWidth > 768) {
+                attachScrollSentinel();
+            } else {
+                const btnCont = document.getElementById('load-more-container');
+                if (btnCont) btnCont.classList.remove('hidden');
+            }
         } else {
             removeScrollSentinel();
+            const btnCont = document.getElementById('load-more-container');
+            if (btnCont) btnCont.classList.add('hidden');
+
             const feed = document.getElementById('feed');
             if (currentPosts.length > 0) {
                 const endEl = document.createElement('div');
@@ -473,6 +482,12 @@ async function loadPosts(folder = '', reset = true) {
         isLoadingPosts = false;
         showScrollLoader(false);
     }
+}
+
+function loadMorePosts() {
+    const btnCont = document.getElementById('load-more-container');
+    if (btnCont) btnCont.classList.add('hidden');
+    loadPosts(currentFolder, false);
 }
 
 function showScrollLoader(show) {
@@ -573,8 +588,10 @@ function appendPostsToFeed(posts) {
             });
         }
         
-        const dateObj = new Date(post.created_at);
-        const dateStr = dateObj.toLocaleString();
+        
+        // Format for Singapore timezone
+        const dateObj = new Date(post.created_at + 'Z');
+        const dateStr = dateObj.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
         
         let newTagHtml = '';
         const now = new Date();
@@ -611,7 +628,8 @@ function appendPostsToFeed(posts) {
         let commentsListHtml = '';
         if (post.comments) {
             post.comments.forEach(c => {
-                const cDate = new Date(c.created_at).toLocaleString();
+                // Ensure date formatting respects the backend string directly
+                const cDate = new Date(c.created_at + 'Z').toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
                 const delBtn = isOwner ? `<button class="comment-delete" onclick="deleteComment(${post.id}, ${c.id})">X</button>` : '';
                 commentsListHtml += `
                     <div class="comment">

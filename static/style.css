@@ -905,3 +905,37 @@ textarea {
 .hidden {
     display: none !important;
 }
+
+/* --- Mobile Specific Fixes --- */
+@media (max-width: 768px) {
+    #app {
+        padding-top: 100px; /* Offset for top */
+    }
+
+    .post-header {
+        flex-wrap: wrap; /* Prevent tag overlap */
+    }
+
+    .post-tags {
+        width: 100%;
+        margin-top: 8px;
+        order: 3; /* Push tags below the header/meta section */
+        justify-content: flex-start;
+    }
+
+    .load-more-container {
+        display: flex !important;
+        justify-content: center;
+        padding: 20px 0;
+    }
+
+    .load-more-container button {
+        width: 100%;
+        max-width: 300px;
+    }
+}
+@media (min-width: 769px) {
+    .load-more-container {
+        display: none !important;
+    }
+}
