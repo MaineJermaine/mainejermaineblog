@@ -250,15 +250,17 @@
         </div>
     </div>
 
-    <!-- Follow Modal -->
+    <!-- Follow Modal (Broadcasting Subscription) -->
     <div id="follow-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 450px;">
             <span class="close" onclick="closeFollowModal()">&times;</span>
-            <h2>Follow Jermaine</h2>
-            <p>Enter your email to get a notification when a new post is made!</p>
-            <input type="email" id="follow-email" placeholder="you@example.com" style="margin-top: 10px;">
-            <button onclick="submitFollow()" class="submit-btn" style="margin-top: 10px;">Subscribe</button>
-            <p id="follow-msg" class="error-msg"></p>
+            <h2 style="color:var(--accent-secondary); margin-bottom: 20px;">>> BROADCAST_SUBSCRIPTION <<</h2>
+            <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 15px; line-height: 1.5;">
+                Join the satellite network. Enter your email to receive direct notifications for new entries. No spam, just pure data.
+            </p>
+            <input type="email" id="follow-email" placeholder="ENTER_EMAIL_ADDRESS [you@example.com]" style="margin-bottom: 15px; padding: 15px;">
+            <button onclick="submitFollow()" class="submit-btn glitch-btn">SYNC TO NETWORK</button>
+            <p id="follow-msg" class="error-msg" style="margin-top: 10px;"></p>
         </div>
     </div>
 
