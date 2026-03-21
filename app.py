@@ -145,6 +145,12 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass
+        # Check and add Profile.favicon_url if missing
+        try:
+            conn.execute(text("ALTER TABLE profile ADD COLUMN favicon_url VARCHAR(200)"))
+            conn.commit()
+        except Exception:
+            pass
         # Check and add Subscriber.is_silenced if missing
         try:
             conn.execute(text("ALTER TABLE subscriber ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
