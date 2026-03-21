@@ -152,23 +152,35 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass
-        # RENAME Table if necessary
+        # SMART_RECOVERY: Move data from orphaned 'subscriber' to 'follower'
         try:
-            conn.execute(text("ALTER TABLE subscriber RENAME TO follower"))
-            conn.commit()
-        except: pass
+            # Check if old table exists
+            table_query = text("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriber'")
+            old_exists = conn.execute(table_query).fetchone()
+            if old_exists:
+                # Is the new table empty?
+                count_f = conn.execute(text("SELECT count(*) FROM follower")).fetchone()[0]
+                if count_f == 0:
+                    # Move all data from old to new
+                    conn.execute(text("INSERT INTO follower (id, email, is_silenced, created_at) SELECT id, email, is_silenced, created_at FROM subscriber"))
+                    conn.commit()
+                    # Optional: rename subscriber to subscriber_old or drop it
+                    conn.execute(text("DROP TABLE subscriber"))
+                    conn.commit()
+        except Exception as e:
+            print(f"SMART_RECOVERY LOG: {e}")
+        
         # Check and add Follower.is_silenced if missing (on new table name)
         try:
             conn.execute(text("ALTER TABLE follower ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
             conn.commit()
-        except Exception:
-            pass
+        except: pass
+
         # Check and add Post.is_private if missing
         try:
             conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
             conn.commit()
-        except Exception:
-            pass
+        except: pass
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
         if not Profile.query.get(1):
@@ -289,6 +301,13 @@ def toggle_silence(id):
     f.is_silenced = not f.is_silenced
     db.session.commit()
     return jsonify({"success": True, "is_silenced": f.is_silenced})
+    
+@app.route('/api/recovery-followers', methods=['GET'])
+def recovery_followers():
+    if not session.get('is_owner'): return "Unauthorized", 403
+    followers = Follower.query.all()
+    emails = [f.email for f in followers]
+    return f"✨ SATELLITE RECOVERY: {len(emails)} records found.<br><br>" + "<br>".join(emails)
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():
