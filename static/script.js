@@ -1807,6 +1807,29 @@ async function removeFollower(id) {
     loadFollowers();
 }
 
+async function manuallyAddFollower() {
+    const input = document.getElementById('manual-follower-email');
+    const email = input.value.trim();
+    if (!email) return;
+
+    try {
+        const res = await fetch('/api/follow', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email})
+        });
+        const data = await res.json();
+        if (data.success) {
+            input.value = '';
+            loadFollowers();
+        } else {
+            alert(data.error || "Failed to add follower.");
+        }
+    } catch(e) {
+        alert("Network error while adding follower.");
+    }
+}
+
 function hasLiked(id) {
     if (isOwner) return false; // Owner doesn't "toggle" like states, just increments
     const liked = JSON.parse(localStorage.getItem('liked_posts') || '[]');

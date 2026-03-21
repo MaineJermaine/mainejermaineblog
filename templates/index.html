@@ -8,8 +8,8 @@
     <link id="dynamic-favicon" rel="icon" type="image/x-icon" href="/static/default_pic.jpg">
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=3.2">
-    <script src="/static/script.js?v=3.2"></script>
+    <link rel="stylesheet" href="/static/style.css?v=3.3">
+    <script src="/static/script.js?v=3.3"></script>
 </head>
 <body>
     <div id="bg-layer" class="bg-layer"></div>
@@ -419,7 +419,13 @@
         <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
             <span class="close" onclick="closeModal('admin-followers-modal')">&times;</span>
             <h2 style="color:var(--accent-secondary)">📡 FOLLOWER_LOGS</h2>
-            <div id="follower-list-box" style="margin-top:20px;">
+            
+            <div style="display:flex; gap:10px; margin: 20px 0; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <input type="email" id="manual-follower-email" placeholder="ENROLL_NEW_EMAIL@ADDR.SYS" style="flex:1; margin-bottom:0;">
+                <button onclick="manuallyAddFollower()" class="submit-btn glitch-btn" style="width:auto; padding:10px 15px;">ADD</button>
+            </div>
+
+            <div id="follower-list-box">
                 <!-- Dynamically filled -->
                 <p style="color:var(--text-dim)">Checking satellite records...</p>
             </div>
