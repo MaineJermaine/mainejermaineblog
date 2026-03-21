@@ -262,13 +262,13 @@ def update_profile():
     db.session.commit()
     return jsonify({"success": True})
 
-@app.route('/api/subscribers', methods=['GET'])
+@app.route('/api/followers', methods=['GET'])
 def list_subscribers():
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
     subs = Subscriber.query.order_by(Subscriber.created_at.desc()).all()
     return jsonify([{"id": s.id, "email": s.email, "is_silenced": s.is_silenced, "created_at": s.created_at.isoformat() if s.created_at else ''} for s in subs])
 
-@app.route('/api/subscribers/<int:id>', methods=['DELETE'])
+@app.route('/api/followers/<int:id>', methods=['DELETE'])
 def delete_subscriber(id):
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
     s = Subscriber.query.get_or_404(id)
@@ -276,7 +276,7 @@ def delete_subscriber(id):
     db.session.commit()
     return jsonify({"success": True})
 
-@app.route('/api/subscribers/<int:id>/toggle-silence', methods=['POST'])
+@app.route('/api/followers/<int:id>/toggle-silence', methods=['POST'])
 def toggle_silence(id):
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
     s = Subscriber.query.get_or_404(id)

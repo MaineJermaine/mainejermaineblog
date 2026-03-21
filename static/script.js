@@ -1756,7 +1756,7 @@ async function loadSubscribers() {
     container.innerHTML = '<p style="color:var(--text-dim)">📡 Intercepting satellite pings...</p>';
     
     try {
-        const res = await fetch('/api/subscribers');
+        const res = await fetch('/api/followers');
         const subs = await res.json();
         
         if (subs.length === 0) {
@@ -1789,13 +1789,13 @@ async function loadSubscribers() {
 }
 
 async function toggleSilence(id) {
-    await fetch(`/api/subscribers/${id}/toggle-silence`, { method: 'POST' });
+    await fetch(`/api/followers/${id}/toggle-silence`, { method: 'POST' });
     loadSubscribers();
 }
 
 async function removeSubscriber(id) {
     if (!confirm("Erase this record permanently?")) return;
-    await fetch(`/api/subscribers/${id}`, { method: 'DELETE' });
+    await fetch(`/api/followers/${id}`, { method: 'DELETE' });
     loadSubscribers();
 }
 
