@@ -1530,3 +1530,15 @@ function toggleNavbar(hide) {
         toggle.classList.add('hidden');
     }
 }
+
+function toggleBio() {
+    const bio = document.getElementById('side-bio');
+    const btn = document.getElementById('toggle-bio-btn');
+    if (bio.classList.contains('expanded')) {
+        bio.classList.remove('expanded');
+        btn.innerText = 'Show More';
+    } else {
+        bio.classList.add('expanded');
+        btn.innerText = 'Show Less';
+    }
+}
