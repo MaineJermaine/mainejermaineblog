@@ -502,15 +502,7 @@ async function loadPosts(folder = '', reset = true) {
 
         appendPostsToFeed(data.posts);
 
-        if (hasMorePosts) {
-            // Desk: Sentinel, Mob: Button
-            if (window.innerWidth > 768) {
-                attachScrollSentinel();
-            } else {
-                const btnCont = document.getElementById('load-more-container');
-                if (btnCont) btnCont.classList.remove('hidden');
-            }
-        } else {
+        if (!hasMorePosts) {
             removeScrollSentinel();
             const btnCont = document.getElementById('load-more-container');
             if (btnCont) btnCont.classList.add('hidden');
@@ -523,6 +515,10 @@ async function loadPosts(folder = '', reset = true) {
                 endEl.innerText = '— end of feed —';
                 feed.appendChild(endEl);
             }
+        } else if (window.innerWidth <= 768) {
+            // Mobile: Show button
+            const btnCont = document.getElementById('load-more-container');
+            if (btnCont) btnCont.classList.remove('hidden');
         }
         if (currentPosts.length === 0 && !data.has_more) {
             document.getElementById('feed').innerHTML = `<div style="text-align:center;color:var(--text-dim);padding:20px;">[ NO_DATA_FOUND ]</div>`;
@@ -532,6 +528,11 @@ async function loadPosts(folder = '', reset = true) {
     } finally {
         isLoadingPosts = false;
         showScrollLoader(false);
+        // PC Auto-load: Attaching ONLY after isLoadingPosts is cleared 
+        // ensures the observer doesn't skip the first intersection check.
+        if (hasMorePosts && window.innerWidth > 768) {
+            attachScrollSentinel();
+        }
     }
 }
 
