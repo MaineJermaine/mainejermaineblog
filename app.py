@@ -140,81 +140,65 @@ class SongOfWeek(db.Model):
     created_at = db.Column(db.DateTime, default=get_utc_time)
 
 with app.app_context():
+    # 1. Create all tables first according to the current model definition
+    # This specifically creates the 'SongOfWeek' and other tables if they are new.
+    db.create_all()
+    
     # --- Lightweight column migrations ---
-    # db.create_all() won't add new columns to existing tables.
-    # We use raw SQL to add any missing columns safely.
+    # Since db.create_all() won't add new columns to EXISTING tables, we manually patch them.
     from sqlalchemy import text
+    
+    # 2. Manual Column Additions
+    def add_col(table, col, col_type):
+        try:
+            # We use a separate transaction-like block for each attempt
+            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+            db.session.commit()
+            print(f"MIGRATION SUCCESS: Added {col} to {table}")
+        except Exception as e:
+            db.session.rollback()
+            # Silently pass if column already exists
+            if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
+                print(f"MIGRATION NOTE: Could not add {col} to {table}: {e}")
+
+    add_col("profile", "spotify_url", "VARCHAR(500)")
+    add_col("profile", "favicon_url", "VARCHAR(200)")
+    add_col("follower", "is_silenced", "BOOLEAN DEFAULT FALSE")
+    add_col("post", "is_private", "BOOLEAN DEFAULT FALSE")
+    
+    # 2FA Columns
+    add_col("profile", "two_factor_enabled", "BOOLEAN DEFAULT TRUE")
+    add_col("profile", "two_factor_cooldown_days", "INTEGER DEFAULT 1")
+    add_col("profile", "current_2fa_code", "VARCHAR(10)")
+    
+    # Handle Timestamp separately for Postgres vs SQLite compat
+    try:
+        db.session.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP"))
+        db.session.commit()
+    except:
+        db.session.rollback()
+        add_col("profile", "last_2fa_success", "DATETIME")
+
+    # 3. SMART_RECOVERY (subscriber -> follower)
     with db.engine.connect() as conn:
-        # Check and add Profile.spotify_url if missing
         try:
-            conn.execute(text("ALTER TABLE profile ADD COLUMN spotify_url VARCHAR(500)"))
-            conn.commit()
-        except Exception:
-            pass
-        # Check and add Profile.favicon_url if missing
-        try:
-            conn.execute(text("ALTER TABLE profile ADD COLUMN favicon_url VARCHAR(200)"))
-            conn.commit()
-        except Exception:
-            pass
-        # CROSS-DATABASE SMART_RECOVERY: Move data from orphaned 'subscriber' to 'follower'
-        # (Works for both local SQLite and Render Postgres)
-        try:
-            # 1. Try a complete transfer if columns match
             conn.execute(text("INSERT INTO follower (id, email, is_silenced, created_at) SELECT id, email, is_silenced, created_at FROM subscriber"))
             conn.commit()
             conn.execute(text("DROP TABLE subscriber"))
             conn.commit()
+            print("MIGRATION: Restored follower data from orphan table.")
         except:
             try:
-                # 2. Try fallback transfer (no is_silenced column in older db version)
                 conn.execute(text("INSERT INTO follower (id, email, created_at) SELECT id, email, created_at FROM subscriber"))
                 conn.commit()
                 conn.execute(text("DROP TABLE subscriber"))
                 conn.commit()
-            except:
-                pass # Already moved, or table never existed.
-        
-        # Check and add Follower.is_silenced if missing (on new table name)
-        try:
-            conn.execute(text("ALTER TABLE follower ADD COLUMN is_silenced BOOLEAN DEFAULT FALSE"))
-            conn.commit()
-        except: pass
+            except: pass
 
-        # Check and add Post.is_private if missing
-        try:
-            conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT FALSE"))
-            conn.commit()
-        except: pass
-        # 2FA Migrations (Two-Phase Postgres Compatible)
-        try:
-            # Phase 1: Add Columns
-            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN"))
-            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER"))
-            conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP"))
-            conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)"))
-            conn.commit()
-            
-            # Phase 2: Populate Defaults
-            conn.execute(text("UPDATE profile SET two_factor_enabled = TRUE WHERE two_factor_enabled IS NULL"))
-            conn.execute(text("UPDATE profile SET two_factor_cooldown_days = 1 WHERE two_factor_cooldown_days IS NULL"))
-            conn.commit()
-            print("MIGRATION: Profile security columns initialized")
-        except:
-            # Fallback for tables that already have some columns but not all
-            try: conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT TRUE")); conn.commit()
-            except: pass
-            try: conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER DEFAULT 1")); conn.commit()
-            except: pass
-            try: conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)")); conn.commit()
-            except: pass
-            try: conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP")); conn.commit()
-            except: pass
-        # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
-        db.create_all()
-        if not Profile.query.get(1):
-            db.session.add(Profile(id=1))
-            db.session.commit()
+    # 4. Ensure singleton profile exists
+    if not Profile.query.get(1):
+        db.session.add(Profile(id=1))
+        db.session.commit()
 
 @app.route('/')
 def index():
