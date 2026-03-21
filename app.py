@@ -89,6 +89,11 @@ class Profile(db.Model):
     bg_type = db.Column(db.String(20), default="preset")
     bg_val = db.Column(db.String(200), default="default")
     spotify_url = db.Column(db.String(500), default="https://6klabs.com/widget/spotify/2d91be678271834a3584d5f6aa0b94a2d038c1fda8079f60fc2e9705dc752a20")
+    two_factor_enabled = db.Column(db.Boolean, default=True)
+    two_factor_cooldown_days = db.Column(db.Integer, default=1)
+    last_2fa_success = db.Column(db.DateTime)
+    current_2fa_code = db.Column(db.String(10))
+    # expirations and internal state handled per login
 
 class Follower(db.Model):
     __tablename__ = 'follower'
@@ -181,6 +186,14 @@ with app.app_context():
             conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
             conn.commit()
         except: pass
+        # 2FA Migrations
+        try:
+            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT 1"))
+            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER DEFAULT 1"))
+            conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success DATETIME"))
+            conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)"))
+            conn.commit()
+        except: pass
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
         if not Profile.query.get(1):
@@ -197,9 +210,66 @@ def login():
     password = data.get('password')
     # Default simple password for the owner
     if password == 'fjr1300A15':
-        session['is_owner'] = True
-        return jsonify({"success": True, "message": "Logged in"})
+        profile = Profile.query.get(1)
+        
+        # Check Cooldown
+        needs_2fa = True
+        if not profile.two_factor_enabled:
+            needs_2fa = False
+        elif profile.last_2fa_success:
+            expiry = profile.last_2fa_success + timedelta(days=profile.two_factor_cooldown_days)
+            if datetime.utcnow() < expiry:
+                needs_2fa = False
+        
+        if not needs_2fa:
+            session['is_owner'] = True
+            profile.last_2fa_success = datetime.utcnow()
+            db.session.commit()
+            return jsonify({"success": True, "message": "Logged in (Cooldown Active)"})
+            
+        # Generate 2FA Code
+        import random, string
+        code = ''.join(random.choices(string.digits + string.ascii_uppercase, k=6))
+        profile.current_2fa_code = code
+        db.session.commit()
+        
+        # Send Email
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = MAIL_USER
+            msg['To'] = MAIL_USER
+            msg['Subject'] = f"Security Code: {code}"
+            body = f"Your login verification code is: {code}\n\nThis code was generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC."
+            msg.attach(MIMEText(body, 'plain'))
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(MAIL_USER, MAIL_PASS)
+            server.send_message(msg)
+            server.quit()
+        except Exception as e:
+            print(f"2FA Email Error: {e}")
+            # Fallback: print to console for dev access
+            print(f"--- SECURITY CODE: {code} ---")
+            
+        return jsonify({"success": True, "two_factor_required": True, "message": "Verification code sent to email."})
+
     return jsonify({"success": False, "message": "Invalid password"}), 401
+
+@app.route('/api/verify-2fa', methods=['POST'])
+def verify_2fa():
+    data = request.json
+    code = data.get('code', '').strip().upper()
+    profile = Profile.query.get(1)
+    
+    if profile.current_2fa_code and code == profile.current_2fa_code:
+        session['is_owner'] = True
+        profile.last_2fa_success = datetime.utcnow()
+        profile.current_2fa_code = None
+        db.session.commit()
+        return jsonify({"success": True, "message": "Owner Access Granted"})
+        
+    return jsonify({"success": False, "message": "Invalid or expired security code"}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -221,6 +291,8 @@ def status():
         "bg_type": profile.bg_type,
         "bg_val": profile.bg_val,
         "spotify_url": profile.spotify_url,
+        "two_factor_enabled": profile.two_factor_enabled,
+        "two_factor_cooldown_days": profile.two_factor_cooldown_days,
         "posts_count": posts_count
     })
 
@@ -276,6 +348,15 @@ def update_profile():
             m = re.search(r'src="([^"]+)"', url)
             if m: url = m.group(1)
         profile.spotify_url = url
+        
+    if 'two_factor_enabled' in request.form:
+        profile.two_factor_enabled = request.form['two_factor_enabled'].lower() == 'true'
+        
+    if 'two_factor_cooldown' in request.form:
+        try:
+            days = int(request.form['two_factor_cooldown'])
+            profile.two_factor_cooldown_days = max(1, min(14, days))
+        except: pass
         
     db.session.commit()
     return jsonify({"success": True})

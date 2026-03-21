@@ -138,6 +138,12 @@ async function checkStatus() {
         const postsCountEl = document.getElementById('posts-count');
         if (postsCountEl) postsCountEl.innerText = data.posts_count || 0;
         
+        // 2FA Settings
+        const tfaEnabled = document.getElementById('edit-2fa-enabled');
+        if (tfaEnabled) tfaEnabled.checked = data.two_factor_enabled;
+        const tfaCooldown = document.getElementById('edit-2fa-cooldown');
+        if (tfaCooldown) tfaCooldown.value = data.two_factor_cooldown_days || 1;
+        
         updateUI();
         // Reload sidebars now that isOwner is known
         loadObsessions();
@@ -202,16 +208,47 @@ async function login() {
         const data = await res.json();
         
         if (data.success) {
-            isOwner = true;
-            toggleLogin();
-            updateUI();
-            document.getElementById('login-password').value = '';
-            errorMsg.innerText = '';
+            if (data.two_factor_required) {
+                document.getElementById('login-modal').classList.add('hidden');
+                document.getElementById('2fa-modal').classList.remove('hidden');
+                document.getElementById('2fa-code-input').focus();
+            } else {
+                isOwner = true;
+                toggleLogin();
+                updateUI();
+                document.getElementById('login-password').value = '';
+                errorMsg.innerText = '';
+            }
         } else {
-            errorMsg.innerText = 'ACCESS DENIED';
+            errorMsg.innerText = data.message || 'ACCESS DENIED';
         }
     } catch (e) {
         errorMsg.innerText = 'Network Error';
+    }
+}
+
+async function submit2FA() {
+    const code = document.getElementById('2fa-code-input').value;
+    const errorEl = document.getElementById('2fa-error');
+    
+    try {
+        const res = await fetch('/api/verify-2fa', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code})
+        });
+        const data = await res.json();
+        if (data.success) {
+            isOwner = true;
+            document.getElementById('2fa-modal').classList.add('hidden');
+            toggleLogin();
+            updateUI();
+            location.reload();
+        } else {
+            errorEl.innerText = data.message || "Invalid Code";
+        }
+    } catch(e) {
+        errorEl.innerText = "Security Network Failure";
     }
 }
 
@@ -406,6 +443,8 @@ async function saveProfile() {
     const formData = new FormData();
     formData.append('username', document.getElementById('edit-profile-username').value);
     formData.append('bio', document.getElementById('edit-profile-bio').value);
+    formData.append('two_factor_enabled', document.getElementById('edit-2fa-enabled').checked);
+    formData.append('two_factor_cooldown', document.getElementById('edit-2fa-cooldown').value);
     
     // Process Collections
     let rawCols = document.getElementById('edit-profile-collections').value;
