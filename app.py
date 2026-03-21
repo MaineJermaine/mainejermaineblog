@@ -152,23 +152,23 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass
-        # SMART_RECOVERY: Move data from orphaned 'subscriber' to 'follower'
+        # CROSS-DATABASE SMART_RECOVERY: Move data from orphaned 'subscriber' to 'follower'
+        # (Works for both local SQLite and Render Postgres)
         try:
-            # Check if old table exists
-            table_query = text("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriber'")
-            old_exists = conn.execute(table_query).fetchone()
-            if old_exists:
-                # Is the new table empty?
-                count_f = conn.execute(text("SELECT count(*) FROM follower")).fetchone()[0]
-                if count_f == 0:
-                    # Move all data from old to new
-                    conn.execute(text("INSERT INTO follower (id, email, is_silenced, created_at) SELECT id, email, is_silenced, created_at FROM subscriber"))
-                    conn.commit()
-                    # Optional: rename subscriber to subscriber_old or drop it
-                    conn.execute(text("DROP TABLE subscriber"))
-                    conn.commit()
-        except Exception as e:
-            print(f"SMART_RECOVERY LOG: {e}")
+            # 1. Try a complete transfer if columns match
+            conn.execute(text("INSERT INTO follower (id, email, is_silenced, created_at) SELECT id, email, is_silenced, created_at FROM subscriber"))
+            conn.commit()
+            conn.execute(text("DROP TABLE subscriber"))
+            conn.commit()
+        except:
+            try:
+                # 2. Try fallback transfer (no is_silenced column in older db version)
+                conn.execute(text("INSERT INTO follower (id, email, created_at) SELECT id, email, created_at FROM subscriber"))
+                conn.commit()
+                conn.execute(text("DROP TABLE subscriber"))
+                conn.commit()
+            except:
+                pass # Already moved, or table never existed.
         
         # Check and add Follower.is_silenced if missing (on new table name)
         try:
