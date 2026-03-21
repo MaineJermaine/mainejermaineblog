@@ -874,7 +874,7 @@ async function submitPost() {
         console.error(e);
         showToast("ERR: BROADCAST FAILED");
     } finally {
-        btn.innerText = '>> B O A R D C A S T <<';
+        btn.innerText = '>> B R O A D C A S T <<';
         btn.disabled = false;
     }
 }
