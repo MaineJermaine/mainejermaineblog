@@ -10,14 +10,15 @@
 </head>
 <body>
     <div id="app">
-        <!-- Navigation Bar -->
-        <nav class="navbar">
+        <!-- Navigation Bar (Tap to Collapse) -->
+        <div id="nav-toggle" class="navbar-expand-toggle hidden" onclick="toggleNavbar(false)">[ EXPAND ]</div>
+        <nav class="navbar" onclick="toggleNavbar(true)">
             <div class="nav-logo">
                 <h1>✧ jermaine's blog ✧</h1>
             </div>
             <div class="nav-links">
-                <button id="login-btn" class="glitch-btn" onclick="toggleLogin()">[ Login ]</button>
-                <button id="logout-btn" class="glitch-btn hidden" onclick="logout()">[ Logout ]</button>
+                <button id="login-btn" class="glitch-btn" onclick="event.stopPropagation(); toggleLogin()">[ Login ]</button>
+                <button id="logout-btn" class="glitch-btn hidden" onclick="event.stopPropagation(); logout()">[ Logout ]</button>
             </div>
         </nav>
 

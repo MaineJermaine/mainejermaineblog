@@ -466,7 +466,6 @@ body {
     }
 }
 
-/* Navbar */
 .navbar {
     position: fixed;
     top: 0;
@@ -480,6 +479,35 @@ body {
     align-items: center;
     padding: 15px 30px;
     z-index: 1000;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.navbar.collapsed {
+    transform: translateY(-100%);
+}
+
+.navbar-expand-toggle {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-primary);
+    color: white;
+    padding: 5px 20px;
+    border-radius: 0 0 10px 10px;
+    font-size: 0.7rem;
+    z-index: 999;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--font-heading);
+    box-shadow: 0 0 10px var(--accent-primary);
+    transition: opacity 0.3s;
+}
+
+.navbar-expand-toggle.hidden {
+    display: none !important;
 }
 
 .nav-logo h1 {

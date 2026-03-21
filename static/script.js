@@ -1518,3 +1518,15 @@ document.addEventListener('click', (e) => {
         if(c) c.classList.add('hidden');
     }
 });
+
+function toggleNavbar(hide) {
+    const nav = document.querySelector('.navbar');
+    const toggle = document.getElementById('nav-toggle');
+    if (hide) {
+        nav.classList.add('collapsed');
+        toggle.classList.remove('hidden');
+    } else {
+        nav.classList.remove('collapsed');
+        toggle.classList.add('hidden');
+    }
+}
