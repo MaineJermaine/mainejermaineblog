@@ -101,6 +101,23 @@
         <div class="folder-filters" id="folder-filters">
             <!-- Populated dynamically via JS -->
             <button class="filter-btn active" onclick="loadPosts('')">All</button>
+            <button class="filter-btn forum-filter-btn" onclick="showForum()">📡 FORUM</button>
+        </div>
+
+        <!-- Forum Create Card (Only Owner) -->
+        <div id="forum-create-section" class="create-card hidden owner-only">
+            <h2>>> BROADCAST_TO_FORUM <<</h2>
+            <textarea id="forum-content" placeholder="What's on your mind? (GIFs, images, clips allowed...)"></textarea>
+            
+            <div class="file-upload">
+                <label for="forum-media" class="upload-btn">📁 [ Attach Media ]</label>
+                <input type="file" id="forum-media" multiple accept="image/*,video/*,audio/*" class="hidden" onchange="handleForumMediaSelect(e)">
+                <span id="forum-file-count" style="font-size:0.8rem; color:var(--text-dim);">0 files selected</span>
+            </div>
+            
+            <div id="forum-media-preview" class="media-preview-grid hidden"></div>
+            
+            <button class="submit-btn" onclick="submitForumPost()">>> BROADCAST <<</button>
         </div>
 
         <!-- Feed (Chronological Scrolling Page) -->

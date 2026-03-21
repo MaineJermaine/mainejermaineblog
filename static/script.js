@@ -1542,3 +1542,176 @@ function toggleBio() {
         btn.innerText = 'Show Less';
     }
 }
+
+// --- FORUM LOGIC ---
+let isForumMode = false;
+let forumPage = 1;
+
+function showForum() {
+    isForumMode = true;
+    document.getElementById('feed').innerHTML = '';
+    document.getElementById('create-post-section').classList.add('hidden');
+    if (isOwner) document.getElementById('forum-create-section').classList.remove('hidden');
+    
+    // Active style
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.forum-filter-btn').classList.add('active');
+    
+    loadForumPosts(true);
+}
+
+// Re-map loadPosts to hide forum sections if switching back
+const originalLoadPosts = loadPosts;
+loadPosts = function(folder, reset) {
+    isForumMode = false;
+    document.getElementById('forum-create-section').classList.add('hidden');
+    if (isOwner) document.getElementById('create-post-section').classList.remove('hidden');
+    originalLoadPosts(folder, reset);
+}
+
+async function loadForumPosts(reset = true) {
+    if (reset) { forumPage = 1; document.getElementById('feed').innerHTML = ''; }
+    
+    try {
+        const res = await fetch(`/api/forum?page=${forumPage}&per_page=10`);
+        const data = await res.json();
+        
+        renderForumPosts(data.posts, reset);
+        
+        // Manage Load More visibility for forum
+        const btnCont = document.getElementById('load-more-container');
+        if (data.has_more) {
+            btnCont.classList.remove('hidden');
+            btnCont.querySelector('button').onclick = () => { forumPage++; loadForumPosts(false); };
+        } else {
+            btnCont.classList.add('hidden');
+        }
+    } catch(e) { console.error("FORUM LOAD ERR:", e); }
+}
+
+function renderForumPosts(posts, reset) {
+    const feed = document.getElementById('feed');
+    posts.forEach(p => {
+        const postEl = document.createElement('div');
+        postEl.className = 'post forum-post';
+        
+        let mediaHtml = '';
+        if (p.media && p.media.length > 0) {
+            mediaHtml = '<div class="post-media-grid">';
+            p.media.forEach(m => {
+                if(m.type === 'video') mediaHtml += `<video controls src="${m.url}"></video>`;
+                else if(m.type === 'audio') mediaHtml += `<audio controls src="${m.url}"></audio>`;
+                else mediaHtml += `<img src="${m.url}" loading="lazy">`;
+            });
+            mediaHtml += '</div>';
+        }
+
+        const dateStr = new Date(p.created_at + 'Z').toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
+        const commentsCount = p.comments ? p.comments.length : 0;
+        
+        const ownerActions = isOwner ? `<button class="owner-btn" style="color:#ff4444" onclick="deleteForumPost(${p.id})">[Delete]</button>` : '';
+
+        let commentsListHtml = '';
+        if (p.comments) {
+            p.comments.forEach(c => {
+                const cDate = new Date(c.created_at + 'Z').toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
+                commentsListHtml += `
+                    <div class="comment">
+                        <div class="comment-author">${c.author}</div>
+                        <div class="comment-content">${c.content}</div>
+                        <div class="comment-time">${cDate}</div>
+                    </div>`;
+            });
+        }
+
+        postEl.innerHTML = `
+            <div class="post-header">
+                <div class="username" style="color:var(--accent-secondary)">📡 FORUM BROADCAST <span class="verified-badge">✧</span></div>
+                <div class="time">${dateStr}</div>
+            </div>
+            <div class="post-content" style="margin-top:10px;">${p.content}</div>
+            ${mediaHtml}
+            <div class="post-actions" style="margin-top:15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top:10px;">
+                <button class="action-btn" onclick="likeForumPost(${p.id})">♥ <span id="forum-likes-${p.id}">${p.likes}</span></button>
+                <button class="action-btn" onclick="toggleComments('forum-${p.id}')">💬 <span>${commentsCount}</span></button>
+                ${ownerActions}
+            </div>
+            <div id="comments-section-forum-${p.id}" class="comments-section">
+                <div id="forum-comments-list-${p.id}">${commentsListHtml}</div>
+                <div class="add-comment-form">
+                    <input type="text" id="forum-comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') submitForumComment(${p.id})">
+                    <button class="add-comment-btn" onclick="submitForumComment(${p.id})">POST</button>
+                </div>
+            </div>
+        `;
+        feed.appendChild(postEl);
+    });
+}
+
+async function submitForumPost() {
+    const input = document.getElementById('forum-content');
+    const content = input.value;
+    const files = document.getElementById('forum-media').files;
+    
+    if(!content && files.length === 0) return;
+    
+    const fd = new FormData();
+    fd.append('content', content);
+    for(let f of files) fd.append('media', f);
+    
+    const btn = document.querySelector('#forum-create-section .submit-btn');
+    btn.innerText = 'BROADCASTING...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/forum', { method: 'POST', body: fd });
+        if(res.ok) {
+            showToast("FORUM MESSAGE RECEIVED");
+            input.value = '';
+            document.getElementById('forum-media').value = '';
+            document.getElementById('forum-file-count').innerText = "0 files selected";
+            showForum();
+        }
+    } catch(e) { showToast("FORUM ERR"); }
+    finally {
+        btn.innerText = '>> BROADCAST <<';
+        btn.disabled = false;
+    }
+}
+
+async function likeForumPost(id) {
+    const res = await fetch(`/api/forum/${id}/like`, { method: 'POST' });
+    const data = await res.json();
+    if(data.success) document.getElementById(`forum-likes-${id}`).innerText = data.likes;
+}
+
+async function submitForumComment(postId) {
+    const input = document.getElementById(`forum-comment-input-${postId}`);
+    const content = input.value.trim();
+    if(!content) return;
+    
+    const author = isOwner ? "Owner" : (localStorage.getItem('viewer_name') || "Anonymous");
+    
+    try {
+        const res = await fetch(`/api/forum/${postId}/comments`, {
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ author, content })
+        });
+        if(res.ok) {
+            input.value = '';
+            showForum(); // Refresh view
+        }
+    } catch(e) {}
+}
+
+async function deleteForumPost(id) {
+    if(!confirm("Erase forum record?")) return;
+    await fetch(`/api/forum/${id}`, { method: 'DELETE' });
+    showForum();
+}
+
+function handleForumMediaSelect(e) {
+    const count = e.target.files.length;
+    document.getElementById('forum-file-count').innerText = `${count} files selected`;
+}

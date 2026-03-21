@@ -109,6 +109,21 @@ class ReadingItem(db.Model):
     link = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=get_utc_time)
 
+class ForumPost(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    media = db.Column(db.Text, default="[]") # JSON list of media
+    likes = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
+    comments = db.relationship('ForumComment', backref='forum_post', lazy=True, cascade="all, delete-orphan")
+
+class ForumComment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('forum_post.id'), nullable=False)
+    author = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
+
 class SongOfWeek(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     spotify_url = db.Column(db.String(500), nullable=False)
@@ -654,6 +669,87 @@ def song_of_week_detail(s_id):
             song.description = data['description']
         db.session.commit()
         return jsonify({"success": True})
+
+# --- FORUM ROUTES ---
+@app.route('/api/forum', methods=['GET', 'POST'])
+def handle_forum():
+    if request.method == 'GET':
+        page     = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        query = ForumPost.query.order_by(ForumPost.created_at.desc())
+        total = query.count()
+        posts = query.offset((page - 1) * per_page).limit(per_page).all()
+        
+        results = []
+        for p in posts:
+            results.append({
+                "id": p.id,
+                "content": p.content,
+                "media": json.loads(p.media),
+                "likes": p.likes,
+                "created_at": p.created_at.isoformat(),
+                "comments": [{
+                    "id": c.id, "author": c.author, "content": c.content, "created_at": c.created_at.isoformat()
+                } for c in p.comments]
+            })
+        return jsonify({"posts": results, "has_more": total > (page * per_page)})
+
+    if not session.get('is_owner'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    content = request.form.get('content', '')
+    media_data = []
+    
+    if 'media' in request.files:
+        files = request.files.getlist('media')
+        for file in files:
+            if file and file.filename:
+                unique_filename = f"forum_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                file.save(file_path)
+                m_type = 'image'
+                ct = file.content_type or ''
+                if ct.startswith('video/'): m_type = 'video'
+                if ct.startswith('audio/'): m_type = 'audio'
+                media_data.append({"url": "/uploads/" + unique_filename, "type": m_type})
+
+    new_post = ForumPost(content=content, media=json.dumps(media_data))
+    db.session.add(new_post)
+    db.session.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/forum/<int:p_id>/like', methods=['POST'])
+def like_forum_post(p_id):
+    post = ForumPost.query.get_or_404(p_id)
+    post.likes += 1
+    db.session.commit()
+    return jsonify({"success": True, "likes": post.likes})
+
+@app.route('/api/forum/<int:p_id>/comments', methods=['POST'])
+def post_forum_comment(p_id):
+    post = ForumPost.query.get_or_404(p_id)
+    data = request.json
+    new_comment = ForumComment(
+        post_id=p_id,
+        author=data.get('author', 'Anonymous'),
+        content=data.get('content', '')
+    )
+    db.session.add(new_comment)
+    db.session.commit()
+    return jsonify({
+        "success": True, "id": new_comment.id, "author": new_comment.author,
+        "content": new_comment.content, "created_at": new_comment.created_at.isoformat()
+    })
+
+@app.route('/api/forum/<int:p_id>', methods=['DELETE'])
+def delete_forum_post(p_id):
+    if not session.get('is_owner'):
+        return jsonify({"error": "Unauthorized"}), 403
+    post = ForumPost.query.get_or_404(p_id)
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({"success": True})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
