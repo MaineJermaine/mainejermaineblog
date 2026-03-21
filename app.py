@@ -27,9 +27,9 @@ if os.environ.get('RENDER'):
 else:
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
-# Utility: Get Singapore Time (GMT+8)
-def get_sg_time():
-    return datetime.utcnow() + timedelta(hours=8)
+# Utility: Get standard UTC time (frontend handles local conversion)
+def get_utc_time():
+    return datetime.utcnow()
 
 if db_url:
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -64,7 +64,7 @@ class Post(db.Model):
     tags = db.Column(db.String(200), default="")
     links = db.Column(db.Text, default="[]") # JSON list of links
     likes = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
     username = db.Column(db.String(50), default="Owner")
     profile_pic = db.Column(db.String(200), default="/static/default_pic.jpg")
     media = db.Column(db.Text, default="[]") # JSON list of file info dicts
@@ -76,7 +76,7 @@ class Comment(db.Model):
     post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
     author = db.Column(db.String(100), nullable=False)
     content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
 
 class Profile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -91,14 +91,14 @@ class Profile(db.Model):
 class Subscriber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
 
 class Obsession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     category = db.Column(db.String(100), nullable=False)
     content = db.Column(db.String(255), nullable=False)
     image_url = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
 
 class ReadingItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -107,13 +107,13 @@ class ReadingItem(db.Model):
     description = db.Column(db.Text)
     app_used = db.Column(db.String(100))
     link = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
 
 class SongOfWeek(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     spotify_url = db.Column(db.String(500), nullable=False)
     description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=get_sg_time)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
 
 with app.app_context():
     db.create_all()
