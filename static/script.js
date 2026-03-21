@@ -350,13 +350,16 @@ function addEditLink() {
 }
 
 function applyBg(type, val) {
+    const bgLayer = document.getElementById('bg-layer');
+    if (!bgLayer) return;
+
     if (type === 'color') {
-        document.body.style.background = val;
+        bgLayer.style.background = val;
     } else if (type === 'media') {
-        document.body.style.background = `url(${val}) no-repeat center center fixed`;
-        document.body.style.backgroundSize = 'cover';
+        bgLayer.style.background = `url(${val}) no-repeat center center`;
+        bgLayer.style.backgroundSize = 'cover';
     } else {
-        document.body.style.background = ''; // revert to css preset
+        bgLayer.style.background = ''; // revert to css preset
     }
 }
 
@@ -367,6 +370,8 @@ function updateCollectionsUI(collections) {
         collections.forEach(col => {
             filterContainer.innerHTML += `<button class="filter-btn" onclick="loadPosts('${col}')">${col}</button>`;
         });
+        // Always keep the Forum button at the end
+        filterContainer.innerHTML += `<button class="filter-btn forum-filter-btn" onclick="showForum()">📡 FORUM</button>`;
     }
     
     const postFolder = document.getElementById('post-folder');
@@ -1842,9 +1847,10 @@ async function submitForumComment(postId) {
 }
 
 async function deleteForumPost(id) {
-    if(!confirm("Erase forum record?")) return;
-    await fetch(`/api/forum/${id}`, { method: 'DELETE' });
-    showForum();
+    showConfirm("ERASE THIS BROADCAST?", async () => {
+        await fetch(`/api/forum/${id}`, { method: 'DELETE' });
+        showForum();
+    });
 }
 
 function handleForumMediaSelect(e) {

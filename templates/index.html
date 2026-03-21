@@ -8,10 +8,11 @@
     <link id="dynamic-favicon" rel="icon" type="image/x-icon" href="/static/default_pic.jpg">
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=2.4">
-    <script src="/static/script.js?v=2.4"></script>
+    <link rel="stylesheet" href="/static/style.css?v=2.6">
+    <script src="/static/script.js?v=2.6"></script>
 </head>
 <body>
+    <div id="bg-layer" class="bg-layer"></div>
     <div id="app">
         <!-- Navigation Bar (Tap to Collapse) -->
         <div id="nav-toggle" class="navbar-expand-toggle hidden" onclick="toggleNavbar(false)">[ EXPAND ]</div>
@@ -56,6 +57,7 @@
                     </div>
 
                     <button id="follow-btn" class="glitch-btn" onclick="openFollowModal()" style="margin-top:10px;">[ Follow ]</button>
+                    <button id="desktop-forum-btn" class="glitch-btn desktop-only" onclick="showForum()" style="margin-top:10px; width:100%; border-color:var(--accent-secondary); color:var(--accent-secondary);">[ 📡 ACCESS FORUM ]</button>
                 </div>
             </aside>
 
@@ -158,6 +160,7 @@
                         <div id="reading-list" class="sidebar-list"></div>
                     </div>
                 </div>
+                <button id="mobile-forum-btn" class="glitch-btn mobile-only" onclick="showForum()" style="margin-top:30px; width:100%; border-color:var(--accent-secondary); color:var(--accent-secondary);">[ 📡 ACCESS FORUM ]</button>
             </aside>
         </div>
     </div>
