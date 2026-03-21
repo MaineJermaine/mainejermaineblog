@@ -118,6 +118,18 @@ async function checkStatus() {
         applyBg(data.bg_type, data.bg_val);
         updateCollectionsUI(data.collections || []);
         renderEditLinks(data.links || []);
+
+        // Spotify Widget
+        if (data.spotify_url) {
+            const iframe = document.getElementById('spotify-iframe');
+            if (iframe) iframe.src = data.spotify_url;
+            const spotifyInput = document.getElementById('edit-profile-spotify-url');
+            if (spotifyInput) spotifyInput.value = data.spotify_url;
+        }
+
+        // Posts Count
+        const postsCountEl = document.getElementById('posts-count');
+        if (postsCountEl) postsCountEl.innerText = data.posts_count || 0;
         
         updateUI();
         // Reload sidebars now that isOwner is known
@@ -150,16 +162,6 @@ function updateUI() {
         if(followBtn) followBtn.classList.remove('hidden');
         document.querySelectorAll('.owner-only').forEach(el => el.classList.add('hidden'));
     }
-
-    // Update Spotify Ifame
-    if (data.spotify_url) {
-        document.getElementById('spotify-iframe').src = data.spotify_url;
-        document.getElementById('edit-profile-spotify-url').value = data.spotify_url;
-    }
-
-    // Update Stats
-    document.getElementById('posts-count').innerText = data.posts_count || 0;
-    
     // Re-render feed to show/hide edit/delete buttons
     renderFeed();
 }
@@ -397,7 +399,7 @@ async function saveProfile() {
     let rawCols = document.getElementById('edit-profile-collections').value;
     let colArr = rawCols.split(',').map(c => c.trim()).filter(c => c);
     formData.append('collections', JSON.stringify(colArr));
-    
+
     // Process Links
     const linkNames = document.querySelectorAll('.edit-link-name');
     const linkUrls = document.querySelectorAll('.edit-link-url');
@@ -407,10 +409,10 @@ async function saveProfile() {
         const u = linkUrls[i].value.trim();
         if(n && u) linksArr.push({platform: n, url: u});
     }
-    formData.append('collections', JSON.stringify(colArr));
+    formData.append('links', JSON.stringify(linksArr));
     formData.append('spotify_url', document.getElementById('edit-profile-spotify-url').value);
-    
-    // Process Links
+
+    // Process Background
     const bgType = document.getElementById('edit-profile-bg-type').value;
     formData.append('bg_type', bgType);
     if (bgType === 'color') {
