@@ -525,6 +525,8 @@ async function loadPosts(folder = '', reset = true) {
         }
     } catch (e) {
         console.error(e);
+        // CRITICAL: Stop the auto-load loop if an error occurs!
+        hasMorePosts = false;
     } finally {
         isLoadingPosts = false;
         showScrollLoader(false);

@@ -305,9 +305,36 @@ def toggle_silence(id):
 @app.route('/api/recovery-followers', methods=['GET'])
 def recovery_followers():
     if not session.get('is_owner'): return "Unauthorized", 403
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+    
+    rep = f"<h1>📡 Deep Satellite Scan</h1>"
+    rep += f"<p><b>DB Tables:</b> {', '.join(tables)}</p><hr>"
+    
+    # Check current followers
     followers = Follower.query.all()
-    emails = [f.email for f in followers]
-    return f"✨ SATELLITE RECOVERY: {len(emails)} records found.<br><br>" + "<br>".join(emails)
+    rep += f"<p><b>Current Followers (follower table):</b> {len(followers)}</p>"
+    rep += "<ul>" + "".join([f"<li>{f.email}</li>" for f in followers]) + "</ul><hr>"
+    
+    # Check for orphaned subscriber table data
+    if 'subscriber' in tables:
+        with db.engine.connect() as conn:
+            try:
+                sub_count = conn.execute(text("SELECT count(*) FROM subscriber")).fetchone()[0]
+                rep += f"<p style='color:orange'>⚠️ ORPHANED 'subscriber' DATA FOUND: {sub_count} records</p>"
+                rep += "<p>You can force a manual restore by adding <b>?force=1</b> to this URL!</p>"
+                
+                if request.args.get('force') == '1':
+                    conn.execute(text("INSERT INTO follower (id, email, created_at) SELECT id, email, created_at FROM subscriber"))
+                    conn.commit()
+                    rep += "<p style='color:green'>✅ FORCE RESTORE SUCCESSFUL! (Simple merge)</p>"
+            except Exception as e:
+                rep += f"<p style='color:red'>ERROR SCANNING ORPHAN: {e}</p>"
+    else:
+        rep += "<p style='color:var(--text-dim)'>No legacy 'subscriber' table detected in the data cluster.</p>"
+        
+    return rep
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():
