@@ -42,6 +42,7 @@
                     <img id="side-profile-pic" src="/static/default_pic.jpg" alt="Profile" class="side-profile-pic">
                     <h2 id="side-username">Owner</h2>
                     <p id="side-bio" class="side-bio">Loading bio...</p>
+                    <div id="side-stats" style="font-size: 0.8rem; color: var(--accent-secondary); margin-bottom: 10px; font-weight: bold; letter-spacing: 1px;">POSTS_MADE: <span id="posts-count">0</span></div>
                     <button id="toggle-bio-btn" class="toggle-bio-btn hidden" onclick="toggleBio()">Show More</button>
                     <div id="side-links" class="profile-links"></div>
                     <button id="edit-profile-btn" class="glitch-btn hidden" onclick="openEditProfileModal()">[ Edit Profile ]</button>
@@ -49,7 +50,7 @@
                     <!-- Spotify Activity Widget -->
                     <div class="spotify-status-container" style="margin-top:20px; border-radius:12px; overflow:hidden; border:1px solid var(--border-light); background: rgba(255,255,255,0.03);">
                         <p style="font-size: 0.75rem; color: var(--text-dim); margin: 8px 0 0 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">what I’m currently listening to!</p>
-                        <iframe src="https://6klabs.com/widget/spotify/2d91be678271834a3584d5f6aa0b94a2d038c1fda8079f60fc2e9705dc752a20" 
+                        <iframe id="spotify-iframe" src="" 
                                 style="width:100%; height:80px; border:none; display: block;"></iframe>
                     </div>
 
@@ -91,11 +92,11 @@
                 <div id="media-preview-container" class="media-preview-grid hidden"></div>
 
                 <div class="form-row" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="notify-followers" checked style="width:auto; margin:0;">
+                    <input type="checkbox" id="notify-followers" checked style="width:auto; margin:0;" onchange="saveNotifyPreference()">
                     <label for="notify-followers" style="font-size:0.85rem; color:var(--text-dim);">📡 Notify Followers via Email?</label>
                 </div>
 
-                <button onclick="submitPost()" class="submit-btn glitch-btn">>> B O A R D C A S T <<</button>
+                <button type="button" class="submit-btn glitch-btn" onclick="submitPost()">>> BROADCAST <<</button>
             </div>
         </div>
 
@@ -247,11 +248,16 @@
             <input type="file" id="edit-profile-bg-media" class="hidden file-input-clean" accept="image/*,video/*" onchange="previewBgMedia(event)">
             <div id="bg-media-preview" class="media-preview-grid hidden" style="margin-bottom:10px;"></div>
 
+            <label class="modal-label">Spotify Widget URL</label>
+            <input type="text" id="edit-profile-spotify-url" placeholder="https://6klabs.com/widget/...">
+
             <label class="modal-label">Links</label>
             <div id="edit-links-container" style="margin-bottom:10px;"></div>
             <button type="button" class="glitch-btn" onclick="addEditLink()" style="margin-bottom:15px; display:block;">+ Add Link</button>
             
             <button onclick="saveProfile()" class="submit-btn">Save Profile</button>
+            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+            <button onclick="openSubscribersModal()" class="glitch-btn" style="width:100%; border-color:var(--accent-secondary); color:var(--accent-secondary)">[ MANAGE SUBSCRIBERS ]</button>
             <p id="profile-error" class="error-msg"></p>
         </div>
     </div>
@@ -405,5 +411,16 @@
         </div>
     </div>
 
+    <!-- Manage Subscribers Modal -->
+    <div id="manage-subs-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <span class="close" onclick="closeModal('manage-subs-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">📡 SUBSCRIBER_LOGS</h2>
+            <div id="sub-list-container" style="margin-top:20px;">
+                <!-- Dynamically filled -->
+                <p style="color:var(--text-dim)">Checking satellite records...</p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

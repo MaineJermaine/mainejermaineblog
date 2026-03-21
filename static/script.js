@@ -9,12 +9,17 @@ let currentCollections = ['Main'];  // populated from profile on load
 
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus().then(() => {
-        // Load sidebars AFTER auth state is known so isOwner is correct
         loadObsessions();
         loadReadingList();
         loadSongOfWeek();
     });
     loadPosts('');
+    
+    // Load notify preference
+    const notifyPref = localStorage.getItem('notify_followers_pref');
+    if (notifyPref !== null) {
+        document.getElementById('notify-followers').checked = (notifyPref === 'true');
+    }
     
     // Auto-resize textareas so you can view long text in its entirety
     document.body.addEventListener('input', function(e) {
@@ -135,7 +140,7 @@ function updateUI() {
         logoutBtn.classList.remove('hidden');
         createSection.classList.remove('hidden');
         if(editProfileBtn) editProfileBtn.classList.remove('hidden');
-        if(followBtn) followBtn.classList.add('hidden');
+        if(followBtn) followBtn.classList.remove('hidden');
         document.querySelectorAll('.owner-only').forEach(el => el.classList.remove('hidden'));
     } else {
         loginBtn.classList.remove('hidden');
@@ -145,9 +150,23 @@ function updateUI() {
         if(followBtn) followBtn.classList.remove('hidden');
         document.querySelectorAll('.owner-only').forEach(el => el.classList.add('hidden'));
     }
+
+    // Update Spotify Ifame
+    if (data.spotify_url) {
+        document.getElementById('spotify-iframe').src = data.spotify_url;
+        document.getElementById('edit-profile-spotify-url').value = data.spotify_url;
+    }
+
+    // Update Stats
+    document.getElementById('posts-count').innerText = data.posts_count || 0;
     
     // Re-render feed to show/hide edit/delete buttons
     renderFeed();
+}
+
+function saveNotifyPreference() {
+    const val = document.getElementById('notify-followers').checked;
+    localStorage.setItem('notify_followers_pref', val);
 }
 
 // Login/Logout functionality
@@ -388,9 +407,10 @@ async function saveProfile() {
         const u = linkUrls[i].value.trim();
         if(n && u) linksArr.push({platform: n, url: u});
     }
-    formData.append('links', JSON.stringify(linksArr));
+    formData.append('collections', JSON.stringify(colArr));
+    formData.append('spotify_url', document.getElementById('edit-profile-spotify-url').value);
     
-    // Process Background
+    // Process Links
     const bgType = document.getElementById('edit-profile-bg-type').value;
     formData.append('bg_type', bgType);
     if (bgType === 'color') {
@@ -704,6 +724,31 @@ function appendPostsToFeed(posts) {
                 <div class="add-comment-form">
                     <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') prepareComment(${post.id})">
                     <button class="add-comment-btn" onclick="prepareComment(${post.id})">POST</button>
+                </div>
+            </div>
+        `;
+        postEl.innerHTML = `
+            <div class="post-header">
+                <div class="username">${post.author} <span class="verified-badge">✧</span></div>
+                <div class="time">${dateStr}</div>
+            </div>
+            <div class="post-title">${post.title}</div>
+            <div class="post-content">${post.content}</div>
+            ${mediaHtml}
+            ${embedHtml}
+            <div class="post-tags">
+                ${(post.tags || []).map(t => `<span class="tag">#${t}</span>`).join(' ')}
+            </div>
+            <div class="post-actions">
+                <button class="action-btn ${hasLiked(post.id) ? 'liked' : ''}" onclick="likePost(${post.id})">♥ <span id="likes-${post.id}">${post.likes}</span></button>
+                <button class="action-btn" onclick="toggleComments(${post.id})">💬 <span>${post.comments ? post.comments.length : 0}</span></button>
+                ${ownerActions}
+            </div>
+            <div id="comments-section-${post.id}" class="comments-section">
+                <div id="comments-list-${post.id}"></div>
+                <div class="add-comment-form">
+                    <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') submitComment(${post.id})">
+                    <button class="add-comment-btn" onclick="submitComment(${post.id})">POST</button>
                 </div>
             </div>
         `;
@@ -1695,6 +1740,9 @@ async function submitForumPost() {
             document.getElementById('forum-media').value = '';
             document.getElementById('forum-file-count').innerText = "0 files selected";
             showForum();
+        } else {
+            const err = await res.json();
+            showToast("FORUM ERR: " + (err.error || "Unknown"));
         }
     } catch(e) { showToast("FORUM ERR"); }
     finally {
@@ -1703,12 +1751,87 @@ async function submitForumPost() {
     }
 }
 
-async function likeForumPost(id) {
-    const res = await fetch(`/api/forum/${id}/like`, { method: 'POST' });
-    const data = await res.json();
-    if(data.success) document.getElementById(`forum-likes-${id}`).innerText = data.likes;
+// --- SUBSCRIBER MANAGEMENT ---
+async function openSubscribersModal() {
+    document.getElementById('manage-subs-modal').classList.remove('hidden');
+    loadSubscribers();
 }
 
+async function loadSubscribers() {
+    const container = document.getElementById('sub-list-container');
+    container.innerHTML = '<p style="color:var(--text-dim)">📡 Intercepting satellite pings...</p>';
+    
+    try {
+        const res = await fetch('/api/subscribers');
+        const subs = await res.json();
+        
+        if (subs.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-dim)">Zero subscribers tracked in this sector.</p>';
+            return;
+        }
+
+        let html = '<table style="width:100%; border-collapse:collapse; color:white; font-size:0.85rem;">';
+        html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.1); text-align:left;">';
+        html += '<th style="padding:10px;">EMAIL_ADDR</th><th style="padding:10px;">STATUS</th><th style="padding:10px;">ACTIONS</th></tr>';
+        
+        subs.forEach(s => {
+            const status = s.is_silenced ? '<span style="color:#ffb74d">SILENCED</span>' : '<span style="color:#4caf50">ACTIVE</span>';
+            const silenceLabel = s.is_silenced ? '[UNSILENCE]' : '[SILENCE]';
+            
+            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:10px;">${s.email}</td>
+                <td style="padding:10px;">${status}</td>
+                <td style="padding:10px;">
+                    <button onclick="toggleSilence(${s.id})" style="background:none; border:none; color:var(--accent-secondary); cursor:pointer; margin-right:10px;">${silenceLabel}</button>
+                    <button onclick="removeSubscriber(${s.id})" style="background:none; border:none; color:#ff4444; cursor:pointer;">[ERASE]</button>
+                </td>
+            </tr>`;
+        });
+        html += '</table>';
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<p style="color:#ff4444">ERR: CONNECTION_LOST</p>';
+    }
+}
+
+async function toggleSilence(id) {
+    await fetch(`/api/subscribers/${id}/toggle-silence`, { method: 'POST' });
+    loadSubscribers();
+}
+
+async function removeSubscriber(id) {
+    if (!confirm("Erase this record permanently?")) return;
+    await fetch(`/api/subscribers/${id}`, { method: 'DELETE' });
+    loadSubscribers();
+}
+
+function hasLiked(id) {
+    if (isOwner) return false; // Owner doesn't "toggle" like states, just increments
+    const liked = JSON.parse(localStorage.getItem('liked_posts') || '[]');
+    return liked.includes(id);
+}
+
+async function likePost(id) {
+    const isLiked = hasLiked(id);
+    const method = (isOwner || !isLiked) ? 'POST' : 'DELETE'; // DELETE for unliking if viewer already liked
+    
+    const res = await fetch(`/api/posts/${id}/like`, { method });
+    const data = await res.json();
+    if (data.success) {
+        document.getElementById(`likes-${id}`).innerText = data.likes;
+        if (!isOwner) {
+            let liked = JSON.parse(localStorage.getItem('liked_posts') || '[]');
+            if (isLiked) {
+                liked = liked.filter(lid => lid !== id);
+                document.querySelector(`.post-actions button[onclick="likePost(${id})"]`).classList.remove('liked');
+            } else {
+                liked.push(id);
+                document.querySelector(`.post-actions button[onclick="likePost(${id})"]`).classList.add('liked');
+            }
+            localStorage.setItem('liked_posts', JSON.stringify(liked));
+        }
+    }
+}
 async function submitForumComment(postId) {
     const input = document.getElementById(`forum-comment-input-${postId}`);
     const content = input.value.trim();

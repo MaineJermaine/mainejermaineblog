@@ -88,10 +88,12 @@ class Profile(db.Model):
     collections = db.Column(db.Text, default='["Main", "Poetry", "Art", "Ramblings"]')
     bg_type = db.Column(db.String(20), default="preset")
     bg_val = db.Column(db.String(200), default="default")
+    spotify_url = db.Column(db.String(500), default="https://6klabs.com/widget/spotify/2d91be678271834a3584d5f6aa0b94a2d038c1fda8079f60fc2e9705dc752a20")
 
 class Subscriber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
+    is_silenced = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=get_utc_time)
 
 class Obsession(db.Model):
@@ -137,31 +139,24 @@ with app.app_context():
     # We use raw SQL to add any missing columns safely.
     from sqlalchemy import text
     with db.engine.connect() as conn:
-        # Check and add Post.links if missing
-        # Check and add Post.links if missing
+        # Check and add Profile.spotify_url if missing
         try:
-            conn.execute(text("ALTER TABLE post ADD COLUMN links TEXT DEFAULT '[]'"))
+            conn.execute(text("ALTER TABLE profile ADD COLUMN spotify_url VARCHAR(500)"))
             conn.commit()
         except Exception:
-            pass  # Column already exists
-        # Check and add Obsession.image_url if missing
+            pass
+        # Check and add Subscriber.is_silenced if missing
         try:
-            conn.execute(text("ALTER TABLE obsession ADD COLUMN image_url VARCHAR(200)"))
+            conn.execute(text("ALTER TABLE subscriber ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
             conn.commit()
         except Exception:
-            pass  # Column already exists
-        # Check and add Profile.favicon_url if missing
-        try:
-            conn.execute(text("ALTER TABLE profile ADD COLUMN favicon_url VARCHAR(200)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+            pass
         # Check and add Post.is_private if missing
         try:
             conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
             conn.commit()
         except Exception:
-            pass  # Column already exists
+            pass
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
         if not Profile.query.get(1):
@@ -190,6 +185,7 @@ def logout():
 @app.route('/api/status', methods=['GET'])
 def status():
     profile = Profile.query.get(1)
+    posts_count = Post.query.filter_by(is_private=False).count() if not session.get('is_owner') else Post.query.count()
     return jsonify({
         "is_owner": session.get('is_owner', False),
         "username": profile.username,
@@ -199,7 +195,9 @@ def status():
         "links": json.loads(profile.links),
         "collections": json.loads(profile.collections),
         "bg_type": profile.bg_type,
-        "bg_val": profile.bg_val
+        "bg_val": profile.bg_val,
+        "spotify_url": profile.spotify_url,
+        "posts_count": posts_count
     })
 
 @app.route('/api/profile', methods=['PUT'])
@@ -239,16 +237,33 @@ def update_profile():
         bg_file.save(file_path)
         profile.bg_val = "/uploads/" + filename
 
-    # Handle Favicon
-    fav_file = request.files.get('favicon')
-    if fav_file and fav_file.filename:
-        filename = "fav_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(fav_file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        fav_file.save(file_path)
-        profile.favicon_url = "/uploads/" + filename
+    if 'spotify_url' in request.form:
+        profile.spotify_url = request.form['spotify_url']
         
     db.session.commit()
     return jsonify({"success": True})
+
+@app.route('/api/subscribers', methods=['GET'])
+def list_subscribers():
+    if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
+    subs = Subscriber.query.order_by(Subscriber.created_at.desc()).all()
+    return jsonify([{"id": s.id, "email": s.email, "is_silenced": s.is_silenced, "created_at": s.created_at.isoformat()} for s in subs])
+
+@app.route('/api/subscribers/<int:id>', methods=['DELETE'])
+def delete_subscriber(id):
+    if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
+    s = Subscriber.query.get_or_404(id)
+    db.session.delete(s)
+    db.session.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/subscribers/<int:id>/toggle-silence', methods=['POST'])
+def toggle_silence(id):
+    if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
+    s = Subscriber.query.get_or_404(id)
+    s.is_silenced = not s.is_silenced
+    db.session.commit()
+    return jsonify({"success": True, "is_silenced": s.is_silenced})
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():
@@ -478,10 +493,14 @@ def post_detail(post_id):
         db.session.commit()
         return jsonify({"success": True})
 
-@app.route('/api/posts/<int:post_id>/like', methods=['POST'])
+@app.route('/api/posts/<int:post_id>/like', methods=['POST', 'DELETE'])
 def like_post(post_id):
     post = Post.query.get_or_404(post_id)
-    post.likes += 1
+    if request.method == 'POST':
+        post.likes += 1
+    elif request.method == 'DELETE':
+        post.likes = max(0, post.likes - 1)
+    
     db.session.commit()
     return jsonify({"success": True, "likes": post.likes})
 
@@ -722,22 +741,33 @@ def handle_forum():
             if file and file.filename:
                 unique_filename = f"forum_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(file_path)
-                m_type = 'image'
-                ct = file.content_type or ''
-                if ct.startswith('video/'): m_type = 'video'
-                if ct.startswith('audio/'): m_type = 'audio'
-                media_data.append({"url": "/uploads/" + unique_filename, "type": m_type})
+    # Owner only broadcast
+    content = request.form.get('content')
+    files = request.files.getlist('media')
+    
+    media_list = []
+    for file in files:
+        if file and file.filename:
+            filename = "forum_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            m_type = 'image'
+            if file.content_type.startswith('video'): m_type = 'video'
+            elif file.content_type.startswith('audio'): m_type = 'audio'
+            media_list.append({"url": "/uploads/" + filename, "type": m_type})
 
-    new_post = ForumPost(content=content, media=json.dumps(media_data))
+    new_post = ForumPost(content=content, media=json.dumps(media_list))
     db.session.add(new_post)
     db.session.commit()
     return jsonify({"success": True})
 
-@app.route('/api/forum/<int:p_id>/like', methods=['POST'])
+@app.route('/api/forum/<int:p_id>/like', methods=['POST', 'DELETE'])
 def like_forum_post(p_id):
     post = ForumPost.query.get_or_404(p_id)
-    post.likes += 1
+    if request.method == 'POST':
+        post.likes += 1
+    elif request.method == 'DELETE':
+        post.likes = max(0, post.likes - 1)
+        
     db.session.commit()
     return jsonify({"success": True, "likes": post.likes})
 
