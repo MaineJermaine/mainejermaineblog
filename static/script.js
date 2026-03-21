@@ -76,6 +76,11 @@ async function checkStatus() {
         // Update Sidebar
         document.getElementById('side-username').innerText = data.username;
         document.getElementById('side-profile-pic').src = data.profile_pic;
+        
+        // Update Favicon to Profile Pic
+        const favicon = document.getElementById('dynamic-favicon');
+        if (favicon) favicon.href = data.profile_pic;
+
         document.getElementById('side-bio').innerText = data.bio || '';
         
         const linksContainer = document.getElementById('side-links');
@@ -244,9 +249,12 @@ function closeEditProfileModal() {
 
 function previewEditPic(e) {
     const preview = document.getElementById('edit-pic-preview');
+    const favicon = document.getElementById('dynamic-favicon');
     if (e.target.files.length > 0) {
-        preview.src = URL.createObjectURL(e.target.files[0]);
+        const url = URL.createObjectURL(e.target.files[0]);
+        preview.src = url;
         preview.classList.remove('hidden');
+        if (favicon) favicon.href = url;
     } else {
         preview.classList.add('hidden');
     }
