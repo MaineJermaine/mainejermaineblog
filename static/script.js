@@ -239,7 +239,7 @@ async function submitFollow() {
     btn.innerText = "Subscribing...";
     
     try {
-        const res = await fetch('/api/subscribe', {
+        const res = await fetch('/api/follow', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({email})
@@ -249,13 +249,13 @@ async function submitFollow() {
             closeFollowModal();
             alert("Thanks for following! We'll email you about new posts.");
         } else {
-            msgEl.innerText = data.error || data.message || "Error subscribing.";
+            msgEl.innerText = data.error || data.message || "Error following.";
         }
     } catch(e) {
         msgEl.innerText = "Network Error";
     } finally {
         btn.disabled = false;
-        btn.innerText = "Subscribe";
+        btn.innerText = "Follow";
     }
 }
 
@@ -1745,22 +1745,27 @@ async function submitForumPost() {
     }
 }
 
-// --- SUBSCRIBER MANAGEMENT ---
-async function openSubscribersModal() {
-    document.getElementById('manage-subs-modal').classList.remove('hidden');
-    loadSubscribers();
+// --- FOLLOWER MANAGEMENT ---
+async function openFollowersWindow() {
+    document.getElementById('admin-followers-modal').classList.remove('hidden');
+    loadFollowers();
 }
 
-async function loadSubscribers() {
-    const container = document.getElementById('sub-list-container');
+async function loadFollowers() {
+    const container = document.getElementById('follower-list-box');
     container.innerHTML = '<p style="color:var(--text-dim)">📡 Intercepting satellite pings...</p>';
     
     try {
         const res = await fetch('/api/followers');
         const subs = await res.json();
         
+        if (!Array.isArray(subs)) {
+            container.innerHTML = '<p style="color:#ffb74d">ERR: Invalid data. ' + (subs.error || JSON.stringify(subs)) + '</p>';
+            return;
+        }
+
         if (subs.length === 0) {
-            container.innerHTML = '<p style="color:var(--text-dim)">Zero subscribers tracked in this sector.</p>';
+            container.innerHTML = '<p style="color:var(--text-dim)">Zero followers tracked in this sector.</p>';
             return;
         }
 
@@ -1777,26 +1782,26 @@ async function loadSubscribers() {
                 <td style="padding:10px;">${status}</td>
                 <td style="padding:10px;">
                     <button onclick="toggleSilence(${s.id})" style="background:none; border:none; color:var(--accent-secondary); cursor:pointer; margin-right:10px;">${silenceLabel}</button>
-                    <button onclick="removeSubscriber(${s.id})" style="background:none; border:none; color:#ff4444; cursor:pointer;">[ERASE]</button>
+                    <button onclick="removeFollower(${s.id})" style="background:none; border:none; color:#ff4444; cursor:pointer;">[ERASE]</button>
                 </td>
             </tr>`;
         });
         html += '</table>';
         container.innerHTML = html;
     } catch(e) {
-        container.innerHTML = '<p style="color:#ff4444">ERR: CONNECTION_LOST</p>';
+        container.innerHTML = '<p style="color:#ff4444">ERR: ' + e.message + '</p>';
     }
 }
 
 async function toggleSilence(id) {
     await fetch(`/api/followers/${id}/toggle-silence`, { method: 'POST' });
-    loadSubscribers();
+    loadFollowers();
 }
 
-async function removeSubscriber(id) {
+async function removeFollower(id) {
     if (!confirm("Erase this record permanently?")) return;
     await fetch(`/api/followers/${id}`, { method: 'DELETE' });
-    loadSubscribers();
+    loadFollowers();
 }
 
 function hasLiked(id) {

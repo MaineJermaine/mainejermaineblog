@@ -8,8 +8,8 @@
     <link id="dynamic-favicon" rel="icon" type="image/x-icon" href="/static/default_pic.jpg">
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=2.7">
-    <script src="/static/script.js?v=2.7"></script>
+    <link rel="stylesheet" href="/static/style.css?v=2.9">
+    <script src="/static/script.js?v=2.9"></script>
 </head>
 <body>
     <div id="bg-layer" class="bg-layer"></div>
@@ -261,7 +261,7 @@
             
             <button onclick="saveProfile()" class="submit-btn">Save Profile</button>
             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 20px 0;">
-            <button onclick="openSubscribersModal()" class="glitch-btn" style="width:100%; border-color:var(--accent-secondary); color:var(--accent-secondary)">[ MANAGE SUBSCRIBERS ]</button>
+            <button onclick="openFollowersWindow()" class="glitch-btn" style="width:100%; border-color:var(--accent-secondary); color:var(--accent-secondary)">[ MANAGE FOLLOWERS ]</button>
             <p id="profile-error" class="error-msg"></p>
         </div>
     </div>
@@ -415,12 +415,11 @@
         </div>
     </div>
 
-    <!-- Manage Subscribers Modal -->
-    <div id="manage-subs-modal" class="modal hidden">
+    <div id="admin-followers-modal" class="modal hidden">
         <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
-            <span class="close" onclick="closeModal('manage-subs-modal')">&times;</span>
-            <h2 style="color:var(--accent-secondary)">📡 SUBSCRIBER_LOGS</h2>
-            <div id="sub-list-container" style="margin-top:20px;">
+            <span class="close" onclick="closeModal('admin-followers-modal')">&times;</span>
+            <h2 style="color:var(--accent-secondary)">📡 FOLLOWER_LOGS</h2>
+            <div id="follower-list-box" style="margin-top:20px;">
                 <!-- Dynamically filled -->
                 <p style="color:var(--text-dim)">Checking satellite records...</p>
             </div>

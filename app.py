@@ -90,7 +90,8 @@ class Profile(db.Model):
     bg_val = db.Column(db.String(200), default="default")
     spotify_url = db.Column(db.String(500), default="https://6klabs.com/widget/spotify/2d91be678271834a3584d5f6aa0b94a2d038c1fda8079f60fc2e9705dc752a20")
 
-class Subscriber(db.Model):
+class Follower(db.Model):
+    __tablename__ = 'follower'
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
     is_silenced = db.Column(db.Boolean, default=False)
@@ -151,9 +152,14 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass
-        # Check and add Subscriber.is_silenced if missing
+        # RENAME Table if necessary
         try:
-            conn.execute(text("ALTER TABLE subscriber ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
+            conn.execute(text("ALTER TABLE subscriber RENAME TO follower"))
+            conn.commit()
+        except: pass
+        # Check and add Follower.is_silenced if missing (on new table name)
+        try:
+            conn.execute(text("ALTER TABLE follower ADD COLUMN is_silenced BOOLEAN DEFAULT 0"))
             conn.commit()
         except Exception:
             pass
@@ -263,26 +269,26 @@ def update_profile():
     return jsonify({"success": True})
 
 @app.route('/api/followers', methods=['GET'])
-def list_subscribers():
+def list_followers():
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
-    subs = Subscriber.query.order_by(Subscriber.created_at.desc()).all()
-    return jsonify([{"id": s.id, "email": s.email, "is_silenced": s.is_silenced, "created_at": s.created_at.isoformat() if s.created_at else ''} for s in subs])
+    followers = Follower.query.order_by(Follower.created_at.desc()).all()
+    return jsonify([{"id": f.id, "email": f.email, "is_silenced": f.is_silenced, "created_at": f.created_at.isoformat() if f.created_at else ''} for f in followers])
 
 @app.route('/api/followers/<int:id>', methods=['DELETE'])
-def delete_subscriber(id):
+def delete_follower(id):
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
-    s = Subscriber.query.get_or_404(id)
-    db.session.delete(s)
+    f = Follower.query.get_or_404(id)
+    db.session.delete(f)
     db.session.commit()
     return jsonify({"success": True})
 
 @app.route('/api/followers/<int:id>/toggle-silence', methods=['POST'])
 def toggle_silence(id):
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
-    s = Subscriber.query.get_or_404(id)
-    s.is_silenced = not s.is_silenced
+    f = Follower.query.get_or_404(id)
+    f.is_silenced = not f.is_silenced
     db.session.commit()
-    return jsonify({"success": True, "is_silenced": s.is_silenced})
+    return jsonify({"success": True, "is_silenced": f.is_silenced})
 
 @app.route('/api/posts', methods=['GET', 'POST'])
 def handle_posts():
@@ -361,33 +367,33 @@ def handle_posts():
     )
     db.session.add(new_post)
     db.session.commit()
-    # Notify subscribers via real email (only for public posts AND if notify toggled)
-    notify_followers = request.form.get('notify_followers') == 'true'
+    # Notify followers via real email (only for public posts AND if notify toggled)
+    notify_followers_toggle = request.form.get('notify_followers') == 'true'
     
-    if not is_private and notify_followers:
+    if not is_private and notify_followers_toggle:
         if MAIL_USER and MAIL_PASS:
-            subscribers = Subscriber.query.all()
-            subscriber_emails = [s.email for s in subscribers]
-            if subscriber_emails:
+            followers = Follower.query.all()
+            follower_emails = [f.email for f in followers]
+            if follower_emails:
                 post_title   = title or "New Post"
                 post_snippet = (content[:200] + '...') if len(content) > 200 else content
                 
                 threading.Thread(
                     target=send_notification_emails,
-                    args=(subscriber_emails, post_title, post_snippet),
+                    args=(follower_emails, post_title, post_snippet),
                     daemon=True
                 ).start()
         else:
             # Fallback for local testing log
-            subscribers = Subscriber.query.all()
-            for sub in subscribers:
-                print(f"[EMAIL NOT CONFIGURED] Would notify: {sub.email}")
+            followers = Follower.query.all()
+            for f in followers:
+                print(f"[EMAIL NOT CONFIGURED] Would notify: {f.email}")
     
     return jsonify({"success": True, "post_id": new_post.id})
 
 
 def send_notification_emails(recipient_emails, post_title, post_snippet):
-    """Sends notification emails to all subscribers via Gmail SMTP."""
+    """Sends notification emails to all followers via Gmail SMTP."""
     subject = f"✨ jermaine just posted: {post_title}"
     
     for email in recipient_emails:
@@ -548,19 +554,19 @@ def delete_comment(comment_id):
     db.session.commit()
     return jsonify({"success": True})
 
-@app.route('/api/subscribe', methods=['POST'])
-def subscribe():
+@app.route('/api/follow', methods=['POST'])
+def follow():
     data = request.json or {}
     email = data.get('email', '').strip()
     if not email or '@' not in email:
         return jsonify({"success": False, "error": "Invalid email format"}), 400
         
-    existing = Subscriber.query.filter_by(email=email).first()
+    existing = Follower.query.filter_by(email=email).first()
     if existing:
-        return jsonify({"success": True, "message": "Already subscribed"})
+        return jsonify({"success": True, "message": "Already following"})
         
-    s = Subscriber(email=email)
-    db.session.add(s)
+    f = Follower(email=email)
+    db.session.add(f)
     db.session.commit()
     return jsonify({"success": True})
 
