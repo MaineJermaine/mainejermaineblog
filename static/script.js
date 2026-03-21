@@ -1601,7 +1601,8 @@ function showForum() {
     
     // Active style
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector('.forum-filter-btn').classList.add('active');
+    const forumBtn = document.querySelector('.forum-filter-btn');
+    if (forumBtn) forumBtn.classList.add('active');
     
     loadForumPosts(true);
 }
@@ -1709,22 +1710,33 @@ async function submitForumPost() {
     btn.innerText = 'BROADCASTING...';
     btn.disabled = true;
 
+    let success = false;
     try {
         const res = await fetch('/api/forum', { method: 'POST', body: fd });
         if(res.ok) {
-            showToast("FORUM MESSAGE RECEIVED");
-            input.value = '';
-            document.getElementById('forum-media').value = '';
-            document.getElementById('forum-file-count').innerText = "0 files selected";
-            showForum();
+            success = true;
         } else {
             const err = await res.json();
             showToast("FORUM ERR: " + (err.error || "Unknown"));
         }
-    } catch(e) { showToast("FORUM ERR"); }
-    finally {
+    } catch(e) {
+        console.error('Forum post error:', e);
+        showToast("FORUM ERR: Could not reach server");
+    } finally {
         btn.innerText = '>> BROADCAST <<';
         btn.disabled = false;
+    }
+
+    if (success) {
+        showToast("FORUM MESSAGE RECEIVED");
+        input.value = '';
+        const mediaInput = document.getElementById('forum-media');
+        if (mediaInput) mediaInput.value = '';
+        const fileCount = document.getElementById('forum-file-count');
+        if (fileCount) fileCount.innerText = "0 files selected";
+        const preview = document.getElementById('forum-media-preview');
+        if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+        showForum();
     }
 }
 

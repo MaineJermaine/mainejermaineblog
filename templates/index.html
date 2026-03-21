@@ -8,8 +8,8 @@
     <link id="dynamic-favicon" rel="icon" type="image/x-icon" href="/static/default_pic.jpg">
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=2.3">
-    <script src="/static/script.js?v=2.3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=2.4">
+    <script src="/static/script.js?v=2.4"></script>
 </head>
 <body>
     <div id="app">
@@ -115,7 +115,7 @@
             
             <div class="file-upload">
                 <label for="forum-media" class="upload-btn">📁 [ Attach Media ]</label>
-                <input type="file" id="forum-media" multiple accept="image/*,video/*,audio/*" class="hidden" onchange="handleForumMediaSelect(e)">
+                <input type="file" id="forum-media" multiple accept="image/*,video/*,audio/*,image/gif" class="hidden" onchange="handleForumMediaSelect(event)">
                 <span id="forum-file-count" style="font-size:0.8rem; color:var(--text-dim);">0 files selected</span>
             </div>
             

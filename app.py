@@ -750,28 +750,21 @@ def handle_forum():
 
     if not session.get('is_owner'):
         return jsonify({"error": "Unauthorized"}), 403
-    
+
     content = request.form.get('content', '')
-    media_data = []
-    
-    if 'media' in request.files:
-        files = request.files.getlist('media')
-        for file in files:
-            if file and file.filename:
-                unique_filename = f"forum_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    # Owner only broadcast
-    content = request.form.get('content')
     files = request.files.getlist('media')
-    
+
     media_list = []
     for file in files:
         if file and file.filename:
             filename = "forum_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
             m_type = 'image'
-            if file.content_type.startswith('video'): m_type = 'video'
-            elif file.content_type.startswith('audio'): m_type = 'audio'
+            if file.content_type and file.content_type.startswith('video'):
+                m_type = 'video'
+            elif file.content_type and file.content_type.startswith('audio'):
+                m_type = 'audio'
             media_list.append({"url": "/uploads/" + filename, "type": m_type})
 
     new_post = ForumPost(content=content, media=json.dumps(media_list))
