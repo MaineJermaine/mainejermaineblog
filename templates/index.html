@@ -219,9 +219,9 @@
         </div>
     </div>
 
-    <!-- Edit Profile Modal -->
+    <!-- Edit Profile Modal (Cinema Wide) -->
     <div id="edit-profile-modal" class="modal hidden">
-        <div class="modal-content" style="max-height:80vh; overflow-y:auto;">
+        <div class="modal-content" style="max-width: 800px; width: 95%; max-height: 85vh; overflow-y: auto;">
             <span class="close" onclick="closeEditProfileModal()">&times;</span>
             <h2>Edit Profile</h2>
             
@@ -236,8 +236,8 @@
             <label class="modal-label">Username</label>
             <input type="text" id="edit-profile-username" placeholder="Username">
             
-            <label class="modal-label">Bio</label>
-            <textarea id="edit-profile-bio" placeholder="Bio" style="min-height:60px;"></textarea>
+            <label class="modal-label">Bio (Markdown Supported / Expansion Mode Enabled)</label>
+            <textarea id="edit-profile-bio" placeholder="Bio" style="min-height: 250px; line-height: 1.6; font-size: 1rem;"></textarea>
             
             <label class="modal-label">Collections (Comma separated)</label>
             <input type="text" id="edit-profile-collections" placeholder="Main, Poetry, Art">

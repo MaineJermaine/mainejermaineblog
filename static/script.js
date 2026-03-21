@@ -28,6 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.style.height = (e.target.scrollHeight) + 'px'; // Expand to scroll max
         }
     });
+
+    // Close modals on outside click (Void Dismissal)
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.add('hidden');
+        }
+    });
 });
 
 function handleMediaSelect(e) {
