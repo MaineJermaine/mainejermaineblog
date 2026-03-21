@@ -186,36 +186,30 @@ with app.app_context():
             conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT FALSE"))
             conn.commit()
         except: pass
-        # 2FA Migrations (Postgres + SQLite Compatible)
+        # 2FA Migrations (Two-Phase Postgres Compatible)
         try:
-            # Check for two_factor_enabled
-            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT TRUE"))
-            conn.commit()
-            print("MIGRATION: Added two_factor_enabled to profile")
-        except: pass
-        
-        try:
-            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER DEFAULT 1"))
-            conn.commit()
-            print("MIGRATION: Added two_factor_cooldown_days to profile")
-        except: pass
-        
-        try:
-            # Postgres needs 'TIMESTAMP' or 'DATETIME' depending on dialect, we use simple DATETIME for SQLAlchemy compat
+            # Phase 1: Add Columns
+            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN"))
+            conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER"))
             conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP"))
-            conn.commit()
-            print("MIGRATION: Added last_2fa_success to profile")
-        except: 
-            try:
-                conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success DATETIME"))
-                conn.commit()
-            except: pass
-            
-        try:
             conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)"))
             conn.commit()
-            print("MIGRATION: Added current_2fa_code to profile")
-        except: pass
+            
+            # Phase 2: Populate Defaults
+            conn.execute(text("UPDATE profile SET two_factor_enabled = TRUE WHERE two_factor_enabled IS NULL"))
+            conn.execute(text("UPDATE profile SET two_factor_cooldown_days = 1 WHERE two_factor_cooldown_days IS NULL"))
+            conn.commit()
+            print("MIGRATION: Profile security columns initialized")
+        except:
+            # Fallback for tables that already have some columns but not all
+            try: conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_enabled BOOLEAN DEFAULT TRUE")); conn.commit()
+            except: pass
+            try: conn.execute(text("ALTER TABLE profile ADD COLUMN two_factor_cooldown_days INTEGER DEFAULT 1")); conn.commit()
+            except: pass
+            try: conn.execute(text("ALTER TABLE profile ADD COLUMN current_2fa_code VARCHAR(10)")); conn.commit()
+            except: pass
+            try: conn.execute(text("ALTER TABLE profile ADD COLUMN last_2fa_success TIMESTAMP")); conn.commit()
+            except: pass
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
         if not Profile.query.get(1):
