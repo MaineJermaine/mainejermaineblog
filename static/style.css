@@ -624,7 +624,7 @@ button {
 }
 
 /* Inputs */
-input[type="text"], input[type="password"], textarea, select {
+input[type="text"], input[type="password"], input[type="email"], textarea, select {
     width: 100%;
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border-color);

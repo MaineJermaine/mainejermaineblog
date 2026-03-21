@@ -250,17 +250,25 @@
         </div>
     </div>
 
-    <!-- Follow Modal (Broadcasting Subscription) -->
+    <!-- Follow Modal (Personalized) -->
     <div id="follow-modal" class="modal hidden">
-        <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-content" style="max-width: 500px; border: 2px solid var(--accent-primary); box-shadow: 0 0 25px var(--accent-primary);">
             <span class="close" onclick="closeFollowModal()">&times;</span>
-            <h2 style="color:var(--accent-secondary); margin-bottom: 20px;">>> BROADCAST_SUBSCRIPTION <<</h2>
-            <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 15px; line-height: 1.5;">
-                Join the satellite network. Enter your email to receive direct notifications for new entries. No spam, just pure data.
-            </p>
-            <input type="email" id="follow-email" placeholder="ENTER_EMAIL_ADDRESS [you@example.com]" style="margin-bottom: 15px; padding: 15px;">
-            <button onclick="submitFollow()" class="submit-btn glitch-btn">SYNC TO NETWORK</button>
-            <p id="follow-msg" class="error-msg" style="margin-top: 10px;"></p>
+            <h2 style="color:var(--accent-secondary); margin-bottom: 20px; font-family: 'Press Start 2P', cursive; font-size: 1rem;">FOLLOW ME ☆</h2>
+            
+            <div style="text-align: left; font-size: 0.95rem; line-height: 1.6; color: #fff;">
+                <p style="margin-bottom: 15px; font-weight: bold;">Follow me and my blogpage !!!</p>
+                <p style="margin-bottom: 15px; color: var(--text-dim);">
+                    you'll get notified through email about my posts and radio-wave activity ☆
+                </p>
+                <p style="margin-bottom: 20px; font-style: italic; color: var(--accent-secondary);">
+                    ill also possibly add you to my wall of fame - but you know, that's only if you follow ><//
+                </p>
+            </div>
+
+            <input type="email" id="follow-email" placeholder="ENTER_YOUR_EMAIL" style="margin-bottom: 20px; border-color: var(--accent-primary);">
+            <button onclick="submitFollow()" class="submit-btn glitch-btn">>> SYNC TO NETWORK <<</button>
+            <p id="follow-msg" class="error-msg" style="margin-top: 15px;"></p>
         </div>
     </div>
 
