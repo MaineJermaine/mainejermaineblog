@@ -132,16 +132,12 @@ class SongOfWeek(db.Model):
     created_at = db.Column(db.DateTime, default=get_utc_time)
 
 with app.app_context():
-    db.create_all()
-    if not Profile.query.get(1):
-        db.session.add(Profile(id=1))
-        db.session.commit()
-    
     # --- Lightweight column migrations ---
     # db.create_all() won't add new columns to existing tables.
     # We use raw SQL to add any missing columns safely.
     from sqlalchemy import text
     with db.engine.connect() as conn:
+        # Check and add Post.links if missing
         # Check and add Post.links if missing
         try:
             conn.execute(text("ALTER TABLE post ADD COLUMN links TEXT DEFAULT '[]'"))
@@ -154,6 +150,12 @@ with app.app_context():
             conn.commit()
         except Exception:
             pass  # Column already exists
+        # Check and add Profile.favicon_url if missing
+        try:
+            conn.execute(text("ALTER TABLE profile ADD COLUMN favicon_url VARCHAR(200)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
         # Check and add Post.is_private if missing
         try:
             conn.execute(text("ALTER TABLE post ADD COLUMN is_private BOOLEAN DEFAULT 0"))
@@ -162,6 +164,9 @@ with app.app_context():
             pass  # Column already exists
         # Create SongOfWeek table if not exists (db.create_all is fine for new tables)
         db.create_all()
+        if not Profile.query.get(1):
+            db.session.add(Profile(id=1))
+            db.session.commit()
 
 @app.route('/')
 def index():
