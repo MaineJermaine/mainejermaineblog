@@ -708,7 +708,7 @@ function appendPostsToFeed(posts) {
             ${embedHtml}
             
             <div class="post-actions">
-                <button class="action-btn" onclick="likePost(${post.id})">
+                <button class="action-btn ${hasLiked(post.id) ? 'liked' : ''}" onclick="likePost(${post.id})">
                     ♥ <span id="likes-${post.id}">${post.likes}</span>
                 </button>
                 <button class="action-btn" onclick="toggleComments(${post.id})">
@@ -724,31 +724,6 @@ function appendPostsToFeed(posts) {
                 <div class="add-comment-form">
                     <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') prepareComment(${post.id})">
                     <button class="add-comment-btn" onclick="prepareComment(${post.id})">POST</button>
-                </div>
-            </div>
-        `;
-        postEl.innerHTML = `
-            <div class="post-header">
-                <div class="username">${post.author} <span class="verified-badge">✧</span></div>
-                <div class="time">${dateStr}</div>
-            </div>
-            <div class="post-title">${post.title}</div>
-            <div class="post-content">${post.content}</div>
-            ${mediaHtml}
-            ${embedHtml}
-            <div class="post-tags">
-                ${(post.tags || []).map(t => `<span class="tag">#${t}</span>`).join(' ')}
-            </div>
-            <div class="post-actions">
-                <button class="action-btn ${hasLiked(post.id) ? 'liked' : ''}" onclick="likePost(${post.id})">♥ <span id="likes-${post.id}">${post.likes}</span></button>
-                <button class="action-btn" onclick="toggleComments(${post.id})">💬 <span>${post.comments ? post.comments.length : 0}</span></button>
-                ${ownerActions}
-            </div>
-            <div id="comments-section-${post.id}" class="comments-section">
-                <div id="comments-list-${post.id}"></div>
-                <div class="add-comment-form">
-                    <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') submitComment(${post.id})">
-                    <button class="add-comment-btn" onclick="submitComment(${post.id})">POST</button>
                 </div>
             </div>
         `;
@@ -1708,7 +1683,7 @@ function renderForumPosts(posts, reset) {
             <div id="comments-section-forum-${p.id}" class="comments-section">
                 <div id="forum-comments-list-${p.id}">${commentsListHtml}</div>
                 <div class="add-comment-form">
-                    <input type="text" id="forum-comment-input-${postId}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') submitForumComment(${p.id})">
+                    <input type="text" id="forum-comment-input-${p.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter') submitForumComment(${p.id})">
                     <button class="add-comment-btn" onclick="submitForumComment(${p.id})">POST</button>
                 </div>
             </div>

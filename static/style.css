@@ -861,6 +861,31 @@ textarea {
     color: var(--accent-primary);
 }
 
+.action-btn.liked {
+    color: var(--accent-secondary);
+    text-shadow: 0 0 8px var(--accent-secondary);
+}
+
+.action-btn.liked span {
+    color: var(--accent-secondary);
+}
+
+/* Subscriber Management Table */
+#sub-list-container table th {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+}
+
+#sub-list-container table td {
+    vertical-align: middle;
+}
+
+#sub-list-container table button:hover {
+    text-shadow: 0 0 5px currentColor;
+    opacity: 0.8;
+}
+
 .owner-actions {
     margin-left: auto;
     display: flex;

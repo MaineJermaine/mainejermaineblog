@@ -191,7 +191,7 @@ def logout():
 @app.route('/api/status', methods=['GET'])
 def status():
     profile = Profile.query.get(1)
-    posts_count = Post.query.filter_by(is_private=False).count() if not session.get('is_owner') else Post.query.count()
+    posts_count = Post.query.filter((Post.is_private == False) | (Post.is_private.is_(None))).count() if not session.get('is_owner') else Post.query.count()
     return jsonify({
         "is_owner": session.get('is_owner', False),
         "username": profile.username,
@@ -243,8 +243,21 @@ def update_profile():
         bg_file.save(file_path)
         profile.bg_val = "/uploads/" + filename
 
+    # Handle Favicon
+    fav_file = request.files.get('favicon')
+    if fav_file and fav_file.filename:
+        filename = "fav_" + str(int(datetime.now().timestamp())) + "_" + secure_filename(fav_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        fav_file.save(file_path)
+        profile.favicon_url = "/uploads/" + filename
+
     if 'spotify_url' in request.form:
-        profile.spotify_url = request.form['spotify_url']
+        url = request.form['spotify_url']
+        if 'src="' in url:
+            import re
+            m = re.search(r'src="([^"]+)"', url)
+            if m: url = m.group(1)
+        profile.spotify_url = url
         
     db.session.commit()
     return jsonify({"success": True})
@@ -253,7 +266,7 @@ def update_profile():
 def list_subscribers():
     if not session.get('is_owner'): return jsonify({"error": "Unauthorized"}), 403
     subs = Subscriber.query.order_by(Subscriber.created_at.desc()).all()
-    return jsonify([{"id": s.id, "email": s.email, "is_silenced": s.is_silenced, "created_at": s.created_at.isoformat()} for s in subs])
+    return jsonify([{"id": s.id, "email": s.email, "is_silenced": s.is_silenced, "created_at": s.created_at.isoformat() if s.created_at else ''} for s in subs])
 
 @app.route('/api/subscribers/<int:id>', methods=['DELETE'])
 def delete_subscriber(id):
